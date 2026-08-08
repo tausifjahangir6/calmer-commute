@@ -1,0 +1,10 @@
+data/
+.git/
+.gitignore
+**/__pycache__/
+**/.venv/
+**/venv/
+**/node_modules/
+frontend/.next/
+**/.pytest_cache/
+**/.DS_Store
