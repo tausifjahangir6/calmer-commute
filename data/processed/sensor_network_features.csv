@@ -1,0 +1,135 @@
+"location_id","display_name","is_cbd","node_degree","nodes_within_400m","walkable_m_within_400m","walkable_km_within_400m","low_sensory_within_800m","nearest_low_sensory_m","snap_m","network_snap_reliable"
+1,"Bourke Street Mall (North)",True,2,2355,28472.67,28.47,12,386.00,3.53,True
+2,"Bourke Street Mall (South)",True,3,2475,30377.57,30.38,12,353.58,0.99,True
+3,"Melbourne Central",True,2,2103,35571.32,35.57,11,100.60,1.78,True
+4,"Town Hall (West)",True,2,2298,30865.06,30.87,12,192.74,2.29,True
+5,"Princes Bridge",True,3,832,19923.17,19.92,17,163.93,12.93,True
+6,"Flinders Underpass - Myki Barriers",True,2,922,19328.53,19.33,16,298.33,6.99,True
+8,"Webb Bridge",True,1,270,10525.26,10.53,5,244.09,28.22,False
+9,"Southern Cross Station",True,2,378,10579.70,10.58,5,345.01,4.20,True
+10,"Victoria Point",True,2,427,10982.71,10.98,3,393.88,5.58,True
+11,"Docklands Waterfront City Building Side",True,3,578,14763.67,14.76,1,181.09,13.21,True
+12,"New Quay",True,3,394,9048.56,9.05,1,155.67,7.92,True
+14,"Sandridge Bridge",True,2,127,3894.02,3.89,7,14.84,10.83,True
+17,"Collins Place (South)",True,3,883,14612.43,14.61,17,315.81,3.05,True
+18,"Collins Place (North)",True,3,916,15297.66,15.30,16,347.72,1.43,True
+19,"Chinatown-Swanston St (North)",True,4,2441,37160.82,37.16,13,303.75,8.48,True
+20,"Chinatown-Lt Bourke St (South)",True,3,2254,32609.25,32.61,13,188.00,8.62,True
+21,"155-161 Russell Street",True,3,2251,31171.98,31.17,12,233.27,5.33,True
+23,"Spencer St-Collins St (South)",True,3,690,12629.89,12.63,8,418.54,6.03,True
+24,"Spencer St-Collins St (North)",True,4,691,12677.35,12.68,8,356.29,4.47,True
+25,"Melbourne Convention Exhibition Centre",True,5,255,8843.31,8.84,6,257.99,26.16,False
+27,"QV Market-Peel St",True,2,1657,24078.21,24.08,4,581.08,1.23,True
+29,"St Kilda Rd-Alexandra Gardens",True,4,325,14057.93,14.06,15,261.21,5.24,True
+30,"Lonsdale St (South)",True,2,2184,30385.27,30.39,13,261.42,5.64,True
+31,"Lygon St (West)",True,2,1607,19200.37,19.20,10,223.47,2.94,True
+35,"Southbank Promenade",True,4,493,11304.88,11.30,13,271.28,1.70,True
+36,"Queen St (West)",True,2,1520,20981.02,20.98,8,491.22,2.14,True
+37,"Lygon St (East)",True,2,1750,20812.84,20.81,10,334.82,0.03,True
+39,"Alfred Place",True,1,1507,20176.98,20.18,13,238.86,20.55,True
+40,"Lonsdale St-Spring St (West)",True,3,978,14556.58,14.56,14,272.01,7.83,True
+41,"Flinders La-Swanston St (West)",True,2,1706,29271.78,29.27,17,191.54,2.25,True
+42,"Grattan St-Swanston St (West)",True,3,896,14145.05,14.15,6,445.65,4.77,True
+43,"Monash Rd-Swanston St (West)",True,2,1072,12266.07,12.27,4,629.44,6.12,True
+44,"Tin Alley-Swanston St (West)",True,2,1065,12292.60,12.29,3,553.62,2.26,True
+45,"Little Collins St-Swanston St (East)",True,2,2294,29461.33,29.46,12,253.93,2.35,True
+46,"Pelham St (South)",True,2,668,11480.93,11.48,4,229.77,4.18,True
+47,"Melbourne Central-Elizabeth St (East)",True,2,2448,33253.75,33.25,9,86.64,0.04,True
+48,"QVM-Queen St (East)",True,2,1329,21729.09,21.73,7,646.92,1.14,True
+49,"QVM-Therry St (South)",True,1,1073,19986.69,19.99,5,500.42,5.79,True
+50,"Faraday St-Lygon St (West)",True,2,2125,23205.95,23.21,7,386.36,1.49,True
+51,"QVM-Franklin St (North)",True,2,819,15350.35,15.35,5,481.24,1.37,True
+52,"Elizabeth St-Lonsdale St (South)",True,2,2163,30176.47,30.18,7,107.02,2.00,True
+53,"Collins Street (North)",True,2,2127,29933.78,29.93,12,211.06,3.22,True
+54,"Lincoln-Swanston (West)",True,2,878,13099.63,13.10,6,217.64,10.24,True
+56,"Lonsdale St - Elizabeth St (North)",True,2,1931,27325.46,27.33,8,108.25,2.33,True
+58,"Bourke St - Spencer St (North)",True,2,690,15357.36,15.36,5,167.29,9.54,True
+59,"Building 80 RMIT",True,3,1213,21823.11,21.82,9,314.76,10.02,True
+61,"RMIT Building 14",True,3,1086,17596.22,17.60,10,293.46,6.90,True
+62,"La Trobe St (North)",True,3,1533,24963.25,24.96,7,235.32,3.13,True
+63,"231 Bourke St",True,4,2033,27907.71,27.91,13,263.78,2.24,True
+66,"QV2 Apartments, 300 Swanston Street",True,3,2161,37541.41,37.54,11,77.34,3.83,True
+67,"Flinders Ln -Degraves St (South)",True,3,1906,31900.52,31.90,14,291.66,2.23,True
+68,"Flinders Ln -Degraves St (North)",True,2,1894,31724.45,31.72,14,295.63,1.10,True
+69,"Flinders Ln -Degraves St (Crossing)",True,2,1902,31905.02,31.91,14,292.92,0.82,True
+70,"Errol Street (East)",True,3,2078,22643.07,22.64,2,378.43,10.13,True
+71,"Westwood Place",True,1,1205,14842.52,14.84,13,384.59,11.66,True
+72,"Flinders St- ACMI",True,3,905,19615.81,19.62,16,171.92,5.04,True
+75,"Spring St- Flinders st (West)",True,3,476,9432.66,9.43,15,171.56,3.46,True
+76,"Macaulay Rd- Bellair St",False,2,2139,23489.79,23.49,2,223.05,1.13,True
+77,"Harbour Esplanade (West) - Pedestrian path",True,2,372,8314.62,8.31,1,371.58,9.25,True
+79,"Flinders St (South)",True,2,1304,25360.04,25.36,17,261.08,0.75,True
+80,"Boyd Commuinty - Rear door",True,3,522,9690.93,9.69,3,765.10,23.27,True
+81,"Boyd Commuinty - Front door",True,2,564,10572.47,10.57,1,701.54,23.47,True
+82,"512 Elizabeth Street",True,2,1123,20509.42,20.51,5,578.34,0.36,True
+83,"510 Elizabeth Street",True,2,1134,20691.90,20.69,5,565.20,4.40,True
+84,"Elizabeth St - Flinders St (East) - New footpath",True,3,1447,25872.95,25.87,16,340.51,1.46,True
+85,"Macaulay Rd (North)",False,3,2056,21769.87,21.77,3,244.55,2.98,True
+86,"Queensberry St - Errol St (South)",True,2,2359,24435.52,24.44,2,214.10,3.48,True
+87,"Errol St (West)",True,2,1941,21119.54,21.12,2,393.89,6.14,True
+89,"City Library",True,2,1851,30777.32,30.78,14,281.03,4.82,True
+90,"Boyd Community Hub- Library",True,1,450,8306.20,8.31,0,NULL,24.67,True
+91,"Library at The Dock-North side",True,2,324,8576.93,8.58,1,777.20,19.41,True
+92,"Library at The Dock-South side",True,2,320,8398.74,8.40,1,782.44,18.79,True
+93,"East Melbourne Library",False,1,862,11761.72,11.76,6,446.13,8.86,True
+94,"Fitzroy Garden- The Conservatory",True,2,87,5300.31,5.30,10,144.17,18.13,True
+95,"Fitzroy Garden Visitor Centre External",True,1,133,3154.92,3.15,7,279.83,16.80,True
+96,"Fitzroy Garden Visitor Centre Internal",True,1,133,3154.92,3.15,7,279.83,4.06,True
+99,"Town Hall Visitor Centre",True,2,2327,30819.19,30.82,12,199.04,3.84,True
+102,"North Melbourne Library",True,2,2231,23398.98,23.40,2,297.80,4.94,True
+103,"Kensington Town Hall",False,5,1243,15500.88,15.50,3,522.35,4.70,True
+104,"Kathleen Syme Library Main",True,2,1461,16615.70,16.62,6,580.89,2.16,True
+105,"Kathleen Syme Library Lib",True,1,1259,14084.74,14.08,6,604.21,11.64,True
+106,"Kathleen Syme Library Cafe",True,2,1291,14513.92,14.51,6,631.88,17.57,True
+107,"Royal Mint 280 William St",True,3,1033,15890.88,15.89,7,306.49,20.44,True
+108,"William St - Little Lonsdale St (West)",True,2,952,15536.46,15.54,7,291.51,1.22,True
+109,"La Trobe St- William St (South)",True,2,902,14841.97,14.84,6,207.37,8.70,True
+116,"Fitzroy Garden Visitor Centre Cafe Verandah",True,1,133,3154.92,3.15,7,279.83,12.83,True
+117,"114 Flinders Street Car Park Footpath",True,2,739,12925.63,12.93,10,341.36,1.39,True
+118,"114 Flinders Street Car Park Crossing",True,3,741,12936.91,12.94,10,340.38,1.93,True
+123,"Birrarung Marr East - Batman Ave Bridge Entry",True,2,200,5398.31,5.40,9,78.24,9.14,True
+124,"Birrarung Marr East - Batman Ave Bridge Entry",True,2,194,5357.67,5.36,9,75.17,6.02,True
+130,"I-Hub 892 Bourke Street",True,2,395,10554.20,10.55,2,672.70,6.47,True
+131,"I-Hub Corner of King Street and Flinders Street (2-6 King)",True,1,607,12190.92,12.19,7,210.29,7.27,True
+132,"I-Hub Corner of King Street and Latrobe Street (317-335 King)",True,4,935,15039.16,15.04,5,116.18,7.62,True
+133,"I-Hub Southern Cross Station - Lonsdale Street Entrance - South",True,2,665,13654.27,13.65,4,394.98,2.70,True
+134,"I-Hub Southern Cross Station - Bourke Street Entrance - North",True,3,626,14854.18,14.85,4,229.02,3.83,True
+135,"I-Hub Southern Cross Station - Bourke Street Entrance - South",True,2,627,15042.31,15.04,5,198.96,3.64,True
+136,"COM Pole 1120 - Towards the City, Near Federation Square Bridge",True,4,82,4361.01,4.36,7,76.41,11.17,True
+137,"COM Pole 2353 - Towards the city, NAB Building",True,2,571,12776.24,12.78,2,360.66,12.23,True
+138,"COM Pole 1671 - Enterprize Park, Queens Bridge",True,3,665,11948.68,11.95,5,91.10,17.74,True
+139,"COM Pole 1647 - Sandridge Bridge Signal Box",True,3,175,4857.63,4.86,8,154.13,7.27,True
+140,"COM Pole 2837 - Boyd Park",True,3,424,7751.19,7.75,1,692.73,15.13,True
+141,"Awning of Nationwide Parking 474 Flinders Street",True,3,607,12372.24,12.37,6,247.41,4.52,True
+142,"COM Pole 1584 - Hammer Hall Entrance",True,1,50,1547.10,1.55,8,248.52,45.56,False
+143,"Mounted on Toilet - Spencer Street, Batman Park",True,2,463,10258.57,10.26,6,122.86,3.81,True
+144,"narrm ngarrgu Library - Level 1 - Lift 1",True,2,1026,18701.37,18.70,6,557.28,3.26,True
+145,"narrm ngarrgu Library - Level 1 - Lift 2",True,2,1038,18776.30,18.78,6,545.37,2.93,True
+146,"narrm ngarrgu Library - Level 1 - Lift 3",True,2,1074,19292.95,19.29,6,521.96,2.90,True
+147,"narrm ngarrgu Library - Level 1 - Meeting Room Lift 1",True,2,1093,19588.00,19.59,6,519.39,3.89,True
+148,"narrm ngarrgu Library - Level 1 - Meeting Room Lift 2",True,2,1093,19588.00,19.59,6,519.39,6.75,True
+149,"narrm ngarrgu Library - Level 1 Main Stairs A",True,2,1061,19112.67,19.11,3,492.21,4.10,True
+150,"narrm ngarrgu Library - Level 1 Main Stairs B",True,2,1060,19045.23,19.05,3,486.21,3.97,True
+151,"narrm ngarrgu Library - Level 2 - Collections Stairs A",True,6,1032,18794.85,18.79,6,551.43,14.43,True
+152,"narrm ngarrgu Library - Level 2 - Study Area Lifts 1",True,2,1074,19292.95,19.29,6,521.96,14.18,True
+153,"narrm ngarrgu Library - Level 2 - Study Area Lifts 2",True,2,1061,19112.67,19.11,3,492.21,10.61,True
+154,"narrm ngarrgu Library - Level 3 Children's Library Door 1",True,6,1032,18794.85,18.79,6,551.43,21.60,True
+155,"narrm ngarrgu Library - Level 3 Children's Library Door 2",True,11,1046,18914.80,18.91,4,490.98,12.25,True
+158,"514 Elizebeth Street",True,2,1123,20495.15,20.50,5,583.85,5.81,True
+159,"516 Elizeberth Street",True,2,1175,21509.88,21.51,6,561.60,6.96,True
+160,"City Baths, 420 Swanston Street - Main Entry",True,2,1080,18095.85,18.10,9,303.44,18.78,True
+161,"Birrarung Marr - COM - Pole 1109",True,3,98,5291.08,5.29,13,229.96,17.10,True
+162,"iHub 489 Elizabeth Street",True,3,1162,21123.32,21.12,6,460.26,5.70,True
+164,"I-Hub 526 La Trobe Street (Footpath)",True,3,700,12991.54,12.99,4,330.69,6.20,True
+165,"475 Spencer Street",True,2,912,12278.25,12.28,3,446.51,0.05,True
+166,"484 Spencer Street",True,2,968,12662.87,12.66,3,484.49,2.17,True
+167,"I-Hub 526 La Trobe Street (Crossing)",True,4,721,13091.24,13.09,4,318.72,4.47,True
+179,"61-67 Power Street Southbank",True,2,568,11426.38,11.43,4,555.10,4.40,True
+180,"Pumping Station No.2, 330 Macaulay Road",False,1,678,9476.30,9.48,2,706.38,3.28,True
+181,"368 Elizabeth Street",True,2,1767,28066.99,28.07,7,174.76,4.40,True
+182,"163 King Street",True,2,1048,18225.35,18.23,6,192.63,4.45,True
+184,"124 Elizabeth Street",True,3,2438,30680.34,30.68,13,384.41,0.70,True
+185,"197 Elizabeth Street",True,3,2344,26937.84,26.94,10,236.45,1.22,True
+187,"RMIT Building 22 - 330 Swanston Street",True,2,1700,34947.47,34.95,9,179.52,2.70,True
+188,"RMIT Building 51 - 80-92 Victoria Street",True,3,1048,17605.36,17.61,12,196.27,8.27,True
+209,"Flinders Underpass - Walkway",True,2,922,19328.53,19.33,16,298.33,5.35,True
