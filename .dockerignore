@@ -8,3 +8,5 @@ data/
 frontend/.next/
 **/.pytest_cache/
 **/.DS_Store
+ai/models/*.joblib
+ai/models/*.pkl
