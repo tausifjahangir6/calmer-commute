@@ -58,6 +58,37 @@ def load_forecast_artifacts(artifacts_dir: Path | None = None):
     return model, sensor_map, volatility_lookup
 
 
+def load_latest_features(artifacts_dir: Path | None = None) -> dict[int, dict]:
+    """
+    Returns {sensor_id: {feature_name: value, ...}}, from latest_features.json
+    (see export_latest_features.py). Returns an EMPTY dict rather than
+    raising if the file doesn't exist yet -- unlike the core model
+    artifacts, this is something a route can check per-request and 404
+    cleanly for, not something that should crash the whole app at startup.
+    """
+    d = artifacts_dir or ARTIFACTS_DIR
+    path = d / "latest_features.json"
+    if not path.exists():
+        return {}
+    raw = json.loads(path.read_text())
+    return {int(k): v for k, v in raw.items()}
+
+
+def load_base_thresholds_optional(artifacts_dir: Path | None = None) -> dict[int, float]:
+    """
+    Returns {sensor_id: threshold}, from base_thresholds.json (see
+    export_base_thresholds.py). Returns an EMPTY dict, not a raise, if the
+    file doesn't exist -- alert thresholds are an enhancement on top of
+    the core forecast (Option A / user-threshold integration), not a hard
+    requirement to serve a forecast number at all.
+    """
+    d = artifacts_dir or ARTIFACTS_DIR
+    path = d / "base_thresholds.json"
+    if not path.exists():
+        return {}
+    return {int(k): float(v) for k, v in json.loads(path.read_text()).items()}
+
+
 if __name__ == "__main__":
     import time
     start = time.time()
