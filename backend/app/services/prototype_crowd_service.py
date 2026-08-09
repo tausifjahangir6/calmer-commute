@@ -14,7 +14,7 @@ WINDOW_MINUTES = 15
 FEED_FRESHNESS_MINUTES = 30
 MAP_SENSOR_IDS = (1,2,3,4,5,6,8,9,10,11,12,14,17,18,19,20,21,23,24,25,27,29,30,31,35,36,37,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,56,58,59,61,62,63,66,67,68,69,70,71,72,75,76,77,79,84,85,86,87,107)
 ROUTE_SENSORS = {
-    "train": ({"id": 41, "name": "Flinders Lane–Swanston Street (West)"}, {"id": 53, "name": "Collins Street (North)"}),
+    "train": ({"id": 41, "name": "Flinders Lane-Swanston Street (West)"}, {"id": 53, "name": "Collins Street (North)"}),
     "tram": ({"id": 5, "name": "Princes Bridge"},),
 }
 
@@ -74,7 +74,7 @@ def _read_sensor(definition: dict) -> dict:
     forecast, mae = _forecast(list(reversed(counts)))
     return {**definition, "peoplePerMinute": current, "latestObservation": rows[0]["sensing_datetime"],
             "sampleMinutes": len(counts), "forecastPeoplePerMinute": forecast,
-            "forecastMethod": "Recent-minute linear trend · 60-minute horizon", "validationMae": mae}
+            "forecastMethod": "Recent-minute linear trend - 60-minute horizon", "validationMae": mae}
 
 
 def _forecast(values: list[int]) -> tuple[int | None, int | None]:
@@ -101,8 +101,30 @@ def _read_feed_latest() -> str | None:
 
 
 def _read_active_sensor_ids() -> set[int]:
-    rows = _read_json(LOCATIONS_DATASET, limit=100, select="location_id,status")
-    return {int(row["location_id"]) for row in rows if str(row.get("status", "")).upper() == "A"}
+    """
+    Paginates through the FULL sensor-locations dataset. REAL BUG THIS
+    FIXES (2026-08-09): the original single-page call (limit=100, no
+    offset) silently truncated the real dataset -- confirmed live:
+    exactly 100 rows came back, and 9 real sensors with fresh, currently-
+    reporting data were entirely absent from those 100 rows, so they
+    were wrongly treated as inactive despite having perfectly good
+    current readings. Same root-cause pattern as _read_map_sensors'
+    batching just below: assuming one request returns everything.
+    """
+    page_size = 100
+    offset = 0
+    active_ids: set[int] = set()
+    while True:
+        rows = _read_json(LOCATIONS_DATASET, limit=page_size, offset=offset, select="location_id,status")
+        if not rows:
+            break
+        active_ids.update(
+            int(row["location_id"]) for row in rows if str(row.get("status", "")).upper() == "A"
+        )
+        if len(rows) < page_size:
+            break  # last page was partial -- nothing more to fetch
+        offset += page_size
+    return active_ids
 
 
 def _read_map_sensors(feed_latest: str | None, active_ids: set[int] | None) -> list[dict]:
@@ -143,10 +165,10 @@ def _historical_payload() -> dict:
         values = [by_id[item] for item in ids if item in by_id]
         return {"peoplePerMinute": max(values) if values else None, "forecast": {"peoplePerMinute": None, "horizonMinutes": 60, "method": "Not evaluated in archived current-condition test", "validationMae": None, "confidence": "Unavailable"}, "coverage": {"usableSensors": 1 if values else 0, "supportedSensors": len(ids), "scope": "Archived CBD corridor test"}, "sensors": []}
     return {"ok": bool(by_id), "dataStatus": "fresh" if by_id else "unavailable", "latestObservation": observed,
-            "source": {"name": "Historical pedestrian counts per hour", "dataset": HOURLY_DATASET, "aggregation": "07:00–07:59 hourly count converted to an average people-per-minute rate"},
+            "source": {"name": "Historical pedestrian counts per hour", "dataset": HOURLY_DATASET, "aggregation": "07:00-07:59 hourly count converted to an average people-per-minute rate"},
             "limitation": "Acceptance-test replay using archived observations; not a live journey recommendation.",
             "routes": {"train": reading([41, 53]), "tram": reading([5])}, "mapSensors": sensors,
-            "scenario": {"id": "dod-2026-08-04-0700", "label": "Tue 4 Aug 2026 · 7:00 am departure", "observationWindow": "Historical 07:00–07:59 hourly observation"}}
+            "scenario": {"id": "dod-2026-08-04-0700", "label": "Tue 4 Aug 2026 - 7:00 am departure", "observationWindow": "Historical 07:00-07:59 hourly observation"}}
 
 
 def _summarise_route(readings: list[dict], definitions) -> dict:

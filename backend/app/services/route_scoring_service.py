@@ -29,16 +29,30 @@ def score_candidate_routes(
     }
     scored = []
     for candidate in candidates:
-        path = decode_google_polyline(candidate.get("geometry", {}).get("value", ""))
+        # REAL BUG FIX (2026-08-09): this used to decode
+        # candidate["geometry"]["value"] -- Google's single TOP-LEVEL
+        # polyline for the WHOLE route, including transit segments (e.g.
+        # a train travelling underground through the City Loop). Live
+        # testing matched sensors near Docklands against a route whose
+        # only actual walking was near Flinders Street, purely because
+        # the train's underground path geometrically swings near
+        # Docklands -- the commuter was never anywhere near those
+        # sensors. Only WALK-mode steps represent real pedestrian
+        # exposure. walk_paths keeps each WALK step's points as its OWN
+        # separate path (not concatenated into one flat list), so a fake
+        # "bridging" segment is never introduced between two disjoint
+        # walk chunks (e.g. "walk to the station" and "walk from the
+        # station", which aren't geographically connected).
+        walk_paths = _walk_only_paths(candidate)
         matches = []
         for sensor_id, reading in readings.items():
             location = locations.get(sensor_id)
-            if not location or not path:
+            if not location or not walk_paths:
                 continue
             distance = round(
-                distance_to_route_metres(
+                _distance_to_walk_paths_metres(
                     {"latitude": location["latitude"], "longitude": location["longitude"]},
-                    path,
+                    walk_paths,
                 ),
                 1,
             )
@@ -88,6 +102,39 @@ def recommend_route(routes: list[dict]) -> dict | None:
     if not low_routes:
         return None
     return min(low_routes, key=lambda route: route["duration_minutes"])
+
+
+def _walk_only_paths(candidate: dict) -> list[list[dict]]:
+    """
+    Returns one path (list of {"latitude","longitude"} points) per
+    WALK-mode step in the candidate's legs, kept as SEPARATE paths -- not
+    concatenated into a single flat list -- so no fake connecting segment
+    is ever introduced between two disjoint walk chunks (e.g. the walk to
+    a station and the walk from a different station after alighting).
+    Returns an empty list if there are no usable WALK steps at all (a
+    fully-transit route, or missing/malformed leg data) -- callers must
+    treat this as "no walkable geometry", resolving to Unknown, not a
+    fallback guess.
+    """
+    paths = []
+    for leg in candidate.get("legs", []) or []:
+        for step in leg.get("steps", []) or []:
+            if step.get("travelMode") != "WALK":
+                continue
+            encoded = (step.get("polyline") or {}).get("encodedPolyline")
+            if not encoded:
+                continue
+            points = decode_google_polyline(encoded)
+            if points:
+                paths.append(points)
+    return paths
+
+
+def _distance_to_walk_paths_metres(point: dict, walk_paths: list[list[dict]]) -> float:
+    """Minimum distance from point to ANY of the separate walk paths."""
+    if not walk_paths:
+        return float("inf")
+    return min(distance_to_route_metres(point, path) for path in walk_paths)
 
 
 def decode_google_polyline(encoded: str) -> list[dict]:

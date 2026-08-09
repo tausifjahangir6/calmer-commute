@@ -46,3 +46,7 @@ def load_sensor_locations(csv_path: str) -> tuple[dict, ...]:
 #     """
 #     from app.data.pedestrian_adapter import fetch_observations
 #     return fetch_observations(at_time=at_time)
+def load_sensor_observations(at_time: str | None = None) -> tuple[dict, ...]:
+    """Return normalised observations for route scoring."""
+    from app.data.pedestrian_adapter import fetch_observations
+    return fetch_observations(at_time=at_time)
