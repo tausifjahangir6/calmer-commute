@@ -185,6 +185,7 @@ frontend/package-lock.json
 
 ```text
 backend/requirements.txt
+ai/requirements.txt
 ```
 
 ### Docker configuration

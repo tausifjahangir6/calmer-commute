@@ -1,0 +1,6 @@
+route_name,raw_edges,merged_blocks,route_label,confidence,coverage_pct,segments_resolved
+Flinders St Station -> State Library,57,54,Low,high,70.4,38/54
+Bourke St Mall -> Southern Cross Station,38,37,Low,medium,59.5,22/37
+QV Melbourne -> Chinatown,16,16,Low,high,100.0,16/16
+Melbourne Central -> Federation Square,44,43,Low,high,81.4,35/43
+RMIT -> Parliament Station,39,39,Low,medium,41.0,16/39

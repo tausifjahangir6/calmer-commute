@@ -1,0 +1,6 @@
+route_name,route_label,confidence,coverage_pct,high_segments
+Flinders St Station -> State Library,Unknown,,0.0,[]
+Bourke St Mall -> Southern Cross Station,Unknown,,0.0,[]
+QV Melbourne -> Chinatown,Unknown,,0.0,[]
+Melbourne Central -> Federation Square,Unknown,,0.0,[]
+RMIT -> Parliament Station,Unknown,,0.0,[]

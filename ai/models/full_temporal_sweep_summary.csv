@@ -1,0 +1,6 @@
+route_name,total_hours,pct_high,pct_low,pct_unknown,first_high_example
+Flinders St Station -> State Library,17332,45.31,54.69,0.0,2024-08-13 08:00:00
+Bourke St Mall -> Southern Cross Station,17332,40.61,59.39,0.0,2024-08-13 07:00:00
+QV Melbourne -> Chinatown,17332,37.34,62.66,0.0,2024-08-13 12:00:00
+Melbourne Central -> Federation Square,17332,44.76,55.24,0.0,2024-08-13 08:00:00
+RMIT -> Parliament Station,17332,34.46,65.54,0.0,2024-08-13 08:00:00
