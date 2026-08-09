@@ -11,7 +11,7 @@ MINUTE_DATASET = "pedestrian-counting-system-past-hour-counts-per-minute"
 HOURLY_DATASET = "pedestrian-counting-system-monthly-counts-per-hour"
 LOCATIONS_DATASET = "pedestrian-counting-system-sensor-locations"
 WINDOW_MINUTES = 15
-FEED_FRESHNESS_MINUTES = 30
+FEED_FRESHNESS_MINUTES = 60
 MAP_SENSOR_IDS = (1,2,3,4,5,6,8,9,10,11,12,14,17,18,19,20,21,23,24,25,27,29,30,31,35,36,37,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,56,58,59,61,62,63,66,67,68,69,70,71,72,75,76,77,79,84,85,86,87,107)
 ROUTE_SENSORS = {
     "train": ({"id": 41, "name": "Flinders Lane-Swanston Street (West)"}, {"id": 53, "name": "Collins Street (North)"}),
@@ -34,7 +34,7 @@ def get_crowd_payload(scenario: str | None = None) -> dict:
             active_ids = None
     map_sensors = _read_map_sensors(feed_latest, active_ids)
     age_minutes = _age_minutes(feed_latest)
-    status = "unavailable" if feed_latest is None else ("fresh" if age_minutes <= 30 else "stale")
+    status = "unavailable" if feed_latest is None else ("fresh" if age_minutes <= FEED_FRESHNESS_MINUTES else "stale")
     any_usable = any(item["freshness"] in ("fresh", "delayed") and item["peoplePerMinute"] is not None for item in map_sensors)
     safe_status = status if any_usable else "unavailable"
     return {
@@ -139,7 +139,6 @@ def _read_map_sensors(feed_latest: str | None, active_ids: set[int] | None) -> l
         if sensor_id in grouped and row.get("sensing_datetime") and _non_negative(row.get("total_of_directions")):
             grouped[sensor_id].append(row)
     latest_dt = _parse(feed_latest) if feed_latest else None
-    feed_fresh = latest_dt is not None and _age_minutes(feed_latest) <= FEED_FRESHNESS_MINUTES
     result = []
     for sensor_id in MAP_SENSOR_IDS:
         rows = sorted(grouped[sensor_id], key=lambda row: row["sensing_datetime"], reverse=True)
@@ -147,12 +146,12 @@ def _read_map_sensors(feed_latest: str | None, active_ids: set[int] | None) -> l
         operational = "unknown" if active_ids is None else ("active" if sensor_id in active_ids else "inactive")
         if latest_dt is None or operational != "active":
             result.append(_map_reading(sensor_id, None, latest_observation, 0, "stale" if latest_dt else "unavailable", "unavailable", operational)); continue
-        if not feed_fresh:
+        if not _sensor_is_fresh(latest_observation):
             result.append(_map_reading(sensor_id, None, latest_observation, 0, "stale", "unavailable", operational)); continue
         start = latest_dt.timestamp() - (WINDOW_MINUTES - 1) * 60
         recent = [row for row in rows if start <= _parse(row["sensing_datetime"]).timestamp() <= latest_dt.timestamp()]
         count = round(sum(int(row["total_of_directions"]) for row in recent) / WINDOW_MINUTES)
-        result.append(_map_reading(sensor_id, count, latest_observation or feed_latest, len(recent), "fresh", "observed" if recent else "inferred-zero", operational))
+        result.append(_map_reading(sensor_id, count, latest_observation, len(recent), "fresh", "observed" if recent else "inferred-zero", operational))
     return result
 
 
@@ -191,6 +190,17 @@ def _empty_reading(definition):
 
 def _parse(value): return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 def _age_minutes(value): return (datetime.now(timezone.utc) - _parse(value).astimezone(timezone.utc)).total_seconds() / 60 if value else float("inf")
+
+def _sensor_is_fresh(latest_observation: str | None) -> bool:
+    """A sensor's own reading is fresh iff ITS OWN observation is within
+    FEED_FRESHNESS_MINUTES of now -- not whether the feed's single newest
+    reading across all 65 sensors is recent. Isolated here so a future
+    swap to a per-row age source (e.g. serving.v_current_density's
+    data_age_minutes) only changes what feeds this check, not the
+    threshold logic itself.
+    """
+    return latest_observation is not None and _age_minutes(latest_observation) <= FEED_FRESHNESS_MINUTES
+
 def _non_negative(value):
     try: return float(value) >= 0
     except (TypeError, ValueError): return False
