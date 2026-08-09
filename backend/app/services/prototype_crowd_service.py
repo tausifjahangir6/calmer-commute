@@ -125,10 +125,12 @@ def _read_map_sensors(feed_latest: str | None, active_ids: set[int] | None) -> l
         operational = "unknown" if active_ids is None else ("active" if sensor_id in active_ids else "inactive")
         if latest_dt is None or operational != "active":
             result.append(_map_reading(sensor_id, None, latest_observation, 0, "stale" if latest_dt else "unavailable", "unavailable", operational)); continue
+        if not feed_fresh:
+            result.append(_map_reading(sensor_id, None, latest_observation, 0, "stale", "unavailable", operational)); continue
         start = latest_dt.timestamp() - (WINDOW_MINUTES - 1) * 60
         recent = [row for row in rows if start <= _parse(row["sensing_datetime"]).timestamp() <= latest_dt.timestamp()]
         count = round(sum(int(row["total_of_directions"]) for row in recent) / WINDOW_MINUTES)
-        result.append(_map_reading(sensor_id, count, latest_observation or feed_latest, len(recent), "fresh" if feed_fresh else "delayed", "observed" if recent else "inferred-zero", operational))
+        result.append(_map_reading(sensor_id, count, latest_observation or feed_latest, len(recent), "fresh", "observed" if recent else "inferred-zero", operational))
     return result
 
 

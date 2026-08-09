@@ -94,11 +94,15 @@ def routes_compare():
         ),
     }
     sensors = load_sensor_locations(str(current_app.config["SENSOR_LOCATIONS_PATH"]))
+    observations = None
+    if current_app.config.get("GOOGLE_INTEGRATION_MODE") == "live":
+        observations = get_crowd_payload().get("mapSensors", [])
     result = compare_routes(
         normalised_request,
         sensors,
         current_app.config["DATA_MODE"],
         provider_config=current_app.config,
+        observations=observations,
     )
     return jsonify(result)
 
