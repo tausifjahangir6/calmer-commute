@@ -1,4 +1,5 @@
 import pandas as pd
+from datetime import datetime, timedelta
 
 import app.ai.forecast as forecast_module
 
@@ -95,3 +96,35 @@ def test_prediction_unknown_for_unmapped_sensor(client, monkeypatch):
     assert response.status_code == 200
     assert body["predicted_level"] == "Unknown"
     assert body["predicted_count_per_minute"] is None
+
+
+def test_forecast_timestamp_equals_generated_at_plus_horizon(client, monkeypatch):
+    """
+    forecast_timestamp must equal generated_at + forecast_horizon_minutes
+    exactly -- required by AI_Team_Route_Scoring_Expectations.docx's
+    example output shape (forecast_timestamp represents the HOUR BEING
+    FORECAST, not when the prediction was computed; generated_at is the
+    latter). A consumer previously had to compute this manually.
+
+    Uses the mock/placeholder path (deterministic regardless of local
+    machine state, same pattern as the other tests here) since this test
+    is about the timestamp arithmetic, not the forecast value itself --
+    the arithmetic must hold in every response, live or placeholder.
+    """
+    _force_placeholder_mode(monkeypatch)
+
+    response = client.get("/api/predictions?sensor_id=5&crowd_threshold=25")
+    body = response.get_json()
+
+    assert response.status_code == 200
+    assert "forecast_timestamp" in body
+    assert "generated_at" in body  # confirm we didn't accidentally remove the existing field
+
+    generated_at = datetime.fromisoformat(body["generated_at"])
+    forecast_timestamp = datetime.fromisoformat(body["forecast_timestamp"])
+
+    assert forecast_timestamp - generated_at == timedelta(minutes=body["forecast_horizon_minutes"])
+    # Must carry the Melbourne UTC offset, not be a naive datetime --
+    # matches generated_at's own existing timezone handling.
+    assert forecast_timestamp.tzinfo is not None
+    assert forecast_timestamp.utcoffset() == generated_at.utcoffset()
