@@ -1,18 +1,18 @@
-"""Deterministic onboarding route comparison pending live routing and count integration."""
+"""Route comparison for deterministic mock mode and live integrated mode."""
 
 from datetime import datetime, timezone
 from hashlib import sha256
 
 from .google_maps_service import generate_candidate_routes
+from .route_scoring_service import recommend_route, score_candidate_routes
 
-from app.ai.route_scoring import score_candidate_routes
-from .sensor_service import load_sensor_observations
 
 def compare_routes(
     request_data: dict,
     sensors: tuple[dict, ...],
     data_mode: str,
     provider_config: dict | None = None,
+    observations: list[dict] | None = None,
 ) -> dict:
     """Build stable mock alternatives so frontend and QA can integrate reproducibly.
 
@@ -31,18 +31,13 @@ def compare_routes(
     # Each candidate must provide route_id, duration_minutes, distance_metres,
     # legs and geometry. It must not assign sensory_level.
     #
-    # DATA/SCORING TEAM REPLACEMENT POINT:
-    # scored_routes = score_candidate_routes(
-    #     candidate_routes, sensor_observations, request_data["crowd_threshold"]
-    # )
-    # Missing, stale or uncovered evidence must yield "Unknown", never "Low".
-    # Preserve the public response keys below so frontend integration remains
-    # stable while internal implementations change.
+    # Live mode uses the route-scoring service below. Mock mode remains stable
+    # for local frontend work and contract tests without external providers.
     if provider_config and provider_config.get("GOOGLE_INTEGRATION_MODE") == "live":
         candidates = generate_candidate_routes(request_data, provider_config)
         if not candidates:
             return _empty_live_result(request_data)
-        return _score_live_candidates(request_data, candidates, sensors)
+        return _score_live_candidates(request_data, candidates, sensors, observations or [], provider_config)
 
     threshold = request_data["crowd_threshold"]
     key = f"{request_data['origin']}|{request_data['destination']}"
@@ -77,11 +72,46 @@ def compare_routes(
     }
 
 
-def _score_live_candidates(request_data: dict, candidates: list[dict], sensors: tuple[dict, ...]) -> dict:
-    sensor_observations = list(load_sensor_observations())
-    result = score_candidate_routes(candidates, sensor_observations, request_data["crowd_threshold"])
-    result["request"] = request_data
-    return result
+def _score_live_candidates(request_data, candidates, sensors, observations, provider_config):
+    routes = score_candidate_routes(
+        candidates,
+        sensors,
+        observations,
+        request_data["crowd_threshold"],
+        provider_config.get("DIRECT_SENSOR_RADIUS_METRES", 75),
+        provider_config.get("PROXY_SENSOR_RADIUS_METRES", 150),
+    )
+    recommended = recommend_route(routes)
+    fastest = min(routes, key=lambda route: route["duration_minutes"])
+    if recommended:
+        recommended["recommended"] = True
+        extra_minutes = recommended["duration_minutes"] - fastest["duration_minutes"]
+        recommendation = {
+            "route_id": recommended["route_id"],
+            "reason": "Shortest route with supported crowd exposure below the user's threshold.",
+            "trade_off": f"{extra_minutes} additional minutes compared with the fastest route.",
+            "lower_crowd_alternative_available": True,
+        }
+    else:
+        recommendation = {
+            "route_id": None,
+            "reason": "No supported Low-crowd route is currently available.",
+            "trade_off": "Unknown routes are not treated as Low or recommended.",
+            "lower_crowd_alternative_available": False,
+        }
+    return {
+        "request": request_data,
+        "routes": routes,
+        "recommendation": recommendation,
+        "metadata": {
+            "data_mode": "mixed",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "limitations": [
+                "Route geometry and travel estimates are supplied by Google Routes.",
+                "Pedestrian counts are a partial proxy for sensory load and only cover sensors within 150 metres of a route.",
+            ],
+        },
+    }
 
 
 def _empty_live_result(request_data: dict) -> dict:

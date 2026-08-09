@@ -128,7 +128,7 @@ mixed covered and uncovered sections   -> High/Low for supported evidence,
 
 For the prototype, the conservative route score should use the maximum supported pedestrian count among matched route sensors so a hotspot is not hidden by averaging. If the team later chooses another aggregation, record the decision and update tests and the contract together.
 
-The distance used to match route geometry to sensors comes from `SENSOR_MATCH_RADIUS_METRES` in `config.py`; do not hard-code a second value.
+The distance rules used to match route geometry to sensors come from `DIRECT_SENSOR_RADIUS_METRES` (75 m) and `PROXY_SENSOR_RADIUS_METRES` (150 m) in `config.py`. Direct evidence takes precedence; proxy evidence is used only when no usable direct observation exists.
 
 ### 4.4 AI forecast output
 

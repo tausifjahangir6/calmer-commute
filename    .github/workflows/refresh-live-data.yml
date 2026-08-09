@@ -1,0 +1,47 @@
+# Scheduled refresh of the live pedestrian feed.
+# Location: .github/workflows/refresh-live-data.yml
+#
+# Runs on GitHub's servers, not anyone's laptop. Free for public repos.
+# Requires a repository secret named DATABASE_URL (the owner connection
+# string -- this job writes, so app_reader will not work).
+
+name: Refresh live pedestrian data
+
+on:
+  schedule:
+    # Every 10 minutes. The source feed runs ~40 minutes behind real time,
+    # so polling faster gains nothing and burns Neon compute hours.
+    # Cron is UTC here, and GitHub may delay runs under load. Neither
+    # matters at this cadence.
+    - cron: '*/10 * * * *'
+
+  # Adds a "Run workflow" button for manual triggering before a demo.
+  workflow_dispatch:
+
+# Stops overlapping runs if one is slow.
+concurrency:
+  group: refresh-live-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install --quiet requests psycopg2-binary
+
+      - name: Refresh minute feed
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DB_SCHEMA: serving
+        run: python scripts/ingestion/refresh_live.py
