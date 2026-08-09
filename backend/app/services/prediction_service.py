@@ -11,9 +11,42 @@ time-ordered holdout).
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from flask import current_app
+
 from app.ai.forecast import predict_count
 
 MELBOURNE_TZ = ZoneInfo("Australia/Melbourne")
+
+
+def classify_crowd_level(predicted_count_per_minute: float | None) -> str:
+    """
+    Absolute LOW/MEDIUM/HIGH/UNKNOWN classification, per
+    AI_Team_Route_Scoring_Expectations.docx's explicit request. Bounds
+    come from database/schema/01_schema.sql's density_band table,
+    converted from hourly to per-minute units (see config.py's
+    CROWD_LEVEL_LOW_MAX_PER_MINUTE / CROWD_LEVEL_MEDIUM_MAX_PER_MINUTE for
+    the conversion and its documented limitation). Boundaries are
+    non-overlapping by construction (<=/<=/else), matching density_band's
+    own fix for the overlapping-bounds bug in "the sample" it replaces.
+
+    THIS IS A SEPARATE FIELD FROM predicted_level, not a replacement:
+    predicted_level answers "is this above THIS USER's personal
+    crowd_threshold" (binary High/Low, the live contract's existing,
+    tested behaviour per INTEGRATION_GUIDE.md). crowd_level answers
+    "where does this sit on a fixed, documented, four-band scale" (the
+    route-scoring team's explicit ask). Both are legitimate, answer
+    different questions, and this function changes neither predicted_level
+    nor any existing response field.
+    """
+    if predicted_count_per_minute is None:
+        return "Unknown"
+    low_max = current_app.config["CROWD_LEVEL_LOW_MAX_PER_MINUTE"]
+    medium_max = current_app.config["CROWD_LEVEL_MEDIUM_MAX_PER_MINUTE"]
+    if predicted_count_per_minute <= low_max:
+        return "Low"
+    if predicted_count_per_minute <= medium_max:
+        return "Medium"
+    return "High"
 
 
 def get_prediction(sensor_id: str, threshold: float, horizon_minutes: int) -> dict:
@@ -52,6 +85,7 @@ def get_prediction(sensor_id: str, threshold: float, horizon_minutes: int) -> di
         "forecast_timestamp": forecast_timestamp_dt.isoformat(),
         "predicted_count_per_minute": predicted_count,
         "predicted_level": predicted_level,
+        "crowd_level": classify_crowd_level(predicted_count),
         "crowd_threshold": threshold,
         "model_version": prediction.model_version,
         "confidence": prediction.confidence,

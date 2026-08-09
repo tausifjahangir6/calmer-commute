@@ -128,3 +128,98 @@ def test_forecast_timestamp_equals_generated_at_plus_horizon(client, monkeypatch
     # matches generated_at's own existing timezone handling.
     assert forecast_timestamp.tzinfo is not None
     assert forecast_timestamp.utcoffset() == generated_at.utcoffset()
+
+
+class _ConstantModel:
+    """Fake model returning a fixed raw HOURLY forecast value, so we can
+    test exact crowd_level boundaries without needing the real 1.3GB
+    model or real training data."""
+    def __init__(self, value):
+        self.value = value
+
+    def predict(self, X):
+        return [self.value] * len(X)
+
+
+def _prepare_live_sensor(monkeypatch, raw_hourly_forecast):
+    """Same fake-artifacts pattern as test_prediction_is_validated_when_model_available,
+    parameterised on the raw hourly forecast value so boundary tests can
+    control it precisely."""
+    monkeypatch.setattr(forecast_module, "_artifacts_loaded", True)
+    monkeypatch.setattr(forecast_module, "_load_error", None)
+    monkeypatch.setattr(forecast_module, "_sensor_map", {5: 0})
+    monkeypatch.setattr(forecast_module, "_latest_features", {
+        5: {
+            "is_weekend": 0, "is_cbd": 1, "obs_in_window_24h": 24,
+            "hour_sin": 0.0, "hour_cos": 1.0, "dow_sin": 0.0, "dow_cos": 1.0,
+            "lag_24h": 100, "lag_168h": 120, "rolling_mean_24h": 110.0,
+            "sensor_name": "Test Sensor", "timestamp": "2026-08-09T08:00:00",
+        },
+    })
+    monkeypatch.setattr(forecast_module, "_base_thresholds", {})
+    fake_volatility = pd.DataFrame(
+        {"cv": [0.1], "volatility_tier": ["low"]},
+        index=pd.Index([5], name="sensor_id"),
+    )
+    monkeypatch.setattr(forecast_module, "_volatility_lookup", fake_volatility)
+    monkeypatch.setattr(forecast_module, "_model", _ConstantModel(raw_hourly_forecast))
+
+
+def test_crowd_level_medium_band(client, monkeypatch):
+    """A raw hourly forecast of 100 (100/60 ~= 1.667 people/minute) sits
+    inside density_band's Medium range (51-150 hourly, converted to
+    ~0.833-2.5 per minute) -- the tier this gap-fix was actually about."""
+    _prepare_live_sensor(monkeypatch, raw_hourly_forecast=100.0)
+
+    response = client.get("/api/predictions?sensor_id=5&crowd_threshold=25")
+    body = response.get_json()
+
+    assert response.status_code == 200
+    assert body["crowd_level"] == "Medium"
+    # predicted_level (the existing, unrelated, threshold-relative field)
+    # must be untouched by this change -- confirms crowd_level is additive.
+    assert "predicted_level" in body
+
+
+def test_crowd_level_boundaries_match_density_band_exactly(client, monkeypatch):
+    """
+    Verifies the /60 per-minute conversion reproduces density_band's exact
+    integer boundaries (Low <=50, Medium 51-150, High >=151, all hourly)
+    at each edge, after rounding predicted_count_per_minute to 2 decimals
+    -- the same rounding forecast.py always applies. This is the
+    boundary-condition coverage requested against density_band's own
+    CHECK-constraint semantics.
+    """
+    cases = [
+        (50.0, "Low"),      # density_band Low upper bound, inclusive
+        (51.0, "Medium"),   # density_band Medium lower bound, inclusive
+        (150.0, "Medium"),  # density_band Medium upper bound, inclusive
+        (151.0, "High"),    # density_band High lower bound, inclusive
+    ]
+    for raw_hourly, expected_level in cases:
+        _prepare_live_sensor(monkeypatch, raw_hourly_forecast=raw_hourly)
+
+        response = client.get("/api/predictions?sensor_id=5&crowd_threshold=25")
+        body = response.get_json()
+
+        assert body["crowd_level"] == expected_level, (
+            f"raw hourly forecast {raw_hourly} -> expected {expected_level}, "
+            f"got {body['crowd_level']} "
+            f"(predicted_count_per_minute={body['predicted_count_per_minute']})"
+        )
+
+
+def test_crowd_level_unknown_when_no_forecast(client, monkeypatch):
+    """crowd_level must follow the same Unknown rule as predicted_level --
+    missing evidence is Unknown, never a guessed band. Same
+    AI_Team_Route_Scoring_Expectations.docx requirement ("If there is not
+    enough valid data, the result should be UNKNOWN instead of forcing a
+    prediction") applied to the new field."""
+    monkeypatch.setattr(forecast_module, "_artifacts_loaded", True)
+    monkeypatch.setattr(forecast_module, "_load_error", None)
+    monkeypatch.setattr(forecast_module, "_latest_features", {})
+
+    response = client.get("/api/predictions?sensor_id=999&crowd_threshold=25")
+    body = response.get_json()
+
+    assert body["crowd_level"] == "Unknown"
