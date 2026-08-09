@@ -12,7 +12,7 @@ export default function EmergencyPage() {
     {
       title: "quiet refuge",
       description: "Find the nearest low-sensory space",
-      onClick: () => router.push("/quiet-spot/refuge"),
+      onClick: () => router.push("/quiet-spot"),
     },
     {
       title: muted ? "Unmute Audio" : "Mute Audio",
