@@ -85,6 +85,22 @@ export const mockRefugeSpots: RefugeSpot[] = [
     quietnessLabel: "Very quiet",
     accessibility: "Wheelchair",
   },
+  {
+    id: "refuge-2",
+    name: "Flagstaff Gardens",
+    type: "Park",
+    decibels: 41,
+    quietnessLabel: "Quiet",
+    accessibility: "Wheelchair",
+  },
+  {
+    id: "refuge-3",
+    name: "Melbourne Museum Quiet Room",
+    type: "Museum",
+    decibels: 29,
+    quietnessLabel: "Very quiet",
+    accessibility: "Wheelchair",
+  },
 ];
 
 // Mocks GET /api/refuges
