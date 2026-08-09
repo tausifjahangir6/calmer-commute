@@ -92,7 +92,7 @@ Example:
 # Observations older than this limit cannot support a current crowd label.
 # A lower value improves freshness but increases Unknown results; a higher
 # value improves coverage but increases the risk of presenting old conditions.
-STALE_AFTER_MINUTES = 15
+STALE_AFTER_MINUTES = 30
 ```
 
 ## 6. Comment and documentation rule

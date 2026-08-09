@@ -67,7 +67,13 @@ Example request:
 
 The response supplies stable route IDs, legs, `High`/`Low`/`Unknown` classification, sensor evidence, hotspot evidence, a recommendation, its reason, its time trade-off, and data limitations.
 
-In live Google mode, route duration, distance and encoded polyline come from Google Routes. Until timestamped pedestrian observations are integrated, those real routes are correctly labelled `Unknown`; they must not be given mock High/Low labels.
+In live Google mode, route duration, distance and encoded polyline come from Google Routes. Current City of Melbourne observations are matched to each route using this evidence hierarchy:
+
+- `<=75 m`: direct evidence
+- `>75 m` and `<=150 m`: proxy evidence, used only when no usable direct sensor exists
+- `>150 m`, stale, inactive or unavailable: unsupported
+
+The maximum usable matched count is the route count and hotspot. A count greater than the user's threshold is `High`; a count equal to or below it is `Low`; unsupported evidence is `Unknown`. `Unknown` must never be treated as `Low` or recommended. The recommended route is the shortest supported `Low` route; when none exists, `recommendation.route_id` is `null`.
 
 ## `GET /api/refuges`
 
@@ -99,8 +105,8 @@ Until the AI component is integrated, the endpoint returns a deterministic place
 
 ## Component replacement boundaries
 
-- Data team replaces mock counts with normalised count, timestamp, freshness and availability fields.
-- Routing component replaces placeholder legs and empty geometry with candidate routes.
+- `/api/crowd` normalises the live count, timestamp, freshness, evidence and operational-status fields used by live route scoring.
+- Google Routes supplies candidate legs and encoded geometry in live mode.
 - AI team replaces the prediction placeholder only after documenting model version and validation results.
 - Places provider replaces the curated candidate list and straight-line walking-time estimate.
 - Missing or stale evidence must map to `Unknown`, never silently to `Low`.

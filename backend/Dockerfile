@@ -5,16 +5,14 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Requirements copied and installed BEFORE source code, same caching
-# pattern as the original single-service Dockerfile -- pip install only
-# re-runs when a requirements file actually changes, not on every source
-# edit. Two files instead of one: ai/requirements.txt is the single
-# source of truth for AI dependencies, not duplicated into
-# backend/requirements.txt.
+# Install backend development dependencies and AI dependencies
 COPY backend/requirements.txt backend/requirements.txt
+COPY backend/requirements-dev.txt backend/requirements-dev.txt
 COPY ai/requirements.txt ai/requirements.txt
 
-RUN pip install --no-cache-dir -r backend/requirements.txt -r ai/requirements.txt
+RUN pip install --no-cache-dir \
+    -r backend/requirements-dev.txt \
+    -r ai/requirements.txt
 
 COPY backend/ backend/
 COPY ai/ ai/
