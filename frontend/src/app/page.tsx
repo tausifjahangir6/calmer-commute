@@ -2,23 +2,29 @@ import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <div className="space-y-4">
-      <h1 className="font-display text-2xl font-semibold">Welcome back</h1>
-      <p className="text-sm text-[#8A8578]">
-        Jump back into your quiet spot, or update your sensory profile.
-      </p>
-      <div className="flex gap-4">
+    <div className="flex flex-col items-center gap-10 py-12 text-center">
+      <div className="space-y-2">
+        <h1 className="font-display text-2xl font-semibold">Welcome back</h1>
+        <p className="text-sm text-[#8A8578]">
+          Jump back into your quiet spot, or update your sensory profile.
+        </p>
+      </div>
+
+      <div className="grid w-full max-w-xl grid-cols-1 gap-6 sm:grid-cols-2">
         <Link
           href="/quiet-spot"
-          className="rounded-lg bg-[#6E8B67] px-6 py-3 text-sm font-medium text-white hover:bg-[#5E7A58]"
+          className="flex aspect-square flex-col items-center justify-center gap-3 rounded-xl border border-[#DDD8CC] bg-white px-4 text-center transition-colors hover:border-[#6E8B67]"
         >
-          Find a quiet route
+          <span className="font-display text-lg font-medium">Find a quiet route</span>
+          <span className="text-xs text-[#8A8578]">Compare routes and avoid crowds</span>
         </Link>
+
         <Link
           href="/profile"
-          className="rounded-lg border border-[#DDD8CC] px-6 py-3 text-sm font-medium hover:border-[#6E8B67]"
+          className="flex aspect-square flex-col items-center justify-center gap-3 rounded-xl border border-[#DDD8CC] bg-white px-4 text-center transition-colors hover:border-[#6E8B67]"
         >
-          Update profile
+          <span className="font-display text-lg font-medium">Update profile</span>
+          <span className="text-xs text-[#8A8578]">Adjust your sensors and triggers</span>
         </Link>
       </div>
     </div>

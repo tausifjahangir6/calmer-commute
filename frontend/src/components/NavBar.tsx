@@ -37,7 +37,7 @@ export default function NavBar() {
           })}
         </div>
         <button className="text-[#8A8578] transition-colors hover:text-[#2E2B26]">
-          Sign out
+          Sign in
         </button>
       </nav>
     </header>
