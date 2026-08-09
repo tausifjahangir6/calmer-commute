@@ -1,50 +1,9 @@
-"""
-score_candidate_routes.py
-
-THE "DATA/SCORING TEAM REPLACEMENT POINT" named in route_service.py's own
-comment:
-
-    scored_routes = score_candidate_routes(
-        candidate_routes, sensor_observations, request_data["crowd_threshold"]
-    )
-
-Combines DEV-US1.1-01 (High/Low classification) and DEV-US1.2-01 (route
-comparison, hotspot avoidance, trade-off) into one function, per team
-decision -- the real contract's response shape (sensory_level + hotspot +
-recommendation all on one call) doesn't cleanly separate the two cards,
-so this is one implementation serving both, with each card's acceptance
-criteria still traceable to specific parts of it (see the writeup).
-
-HOW THIS DIFFERS FROM route_scoring.py (the original DEV-US1.1-01 build):
-  - Geometry comes from Google Routes (decoded polyline), not OSMnx --
-    no more building the walking graph ourselves. The catchment-matching
-    TECHNIQUE (distance from a sensor point to a route line, in real
-    metres) is the same one already validated in route_scoring.py; only
-    the geometry source changed.
-  - sensor_observations arrive with freshness/availability ALREADY
-    computed by the data adapter (sensor_service.py's replacement point)
-    -- this does not recompute freshness from raw timestamps the way
-    get_latest_observation() did.
-  - No street-block sub-segmentation. The real contract wants one
-    sensory_level and one hotspot per whole route, not per segment --
-    coarser than the original block-merging design. The catchment-radius
-    matching and "never unsupported Low" refusal pattern still apply,
-    just at whole-route granularity.
-  - Threshold: Option A (client-supplied single value, compared directly)
-    per team decision on 2026-08-09. See _exceeds_threshold() -- isolated
-    into one small function specifically so this is a one-line swap if
-    the team later confirms Option B (per-sensor-relative) instead.
-    KNOWN LIMITATION, documented deliberately rather than hidden: a
-    single global threshold can't account for different sensors having
-    very different normal foot-traffic levels. See
-    ai/docs/DEV-US1.1-01_writeup.md for the full discussion.
-"""
-
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-DEFAULT_CATCHMENT_RADIUS_M = 100.0  # same constant/value as route_scoring.py, kept in sync deliberately
+DEFAULT_DIRECT_RADIUS_M = 75.0   # Vince's "direct" evidence tier -- close enough to trust as strong evidence
+DEFAULT_PROXY_RADIUS_M = 150.0   # Vince's "proxy" tier -- usable ONLY when no direct evidence exists
 
 
 def decode_polyline(encoded: str) -> list[tuple[float, float]]:
@@ -74,7 +33,7 @@ def decode_polyline(encoded: str) -> list[tuple[float, float]]:
     return points
 
 
-def _project_points(points_latlon: list[tuple[float, float]]):
+def _project_points(points_latlon: list[tuple[float, float]], ref_lat: float | None = None):
     """
     Projects a list of (lat, lon) points into a metric CRS, using the same
     lesson learned in route_scoring.py: comparing raw lat/lon degrees as
@@ -83,16 +42,79 @@ def _project_points(points_latlon: list[tuple[float, float]]):
     CBD-scale distances, no external graph/CRS machinery needed here
     since there's no OSMnx graph in this path to borrow a projection
     from).
+
+    ref_lat: pass an EXPLICIT shared reference latitude when projecting
+    multiple related point sets (e.g. a route's geometry AND every sensor
+    being matched against it) so they land in the SAME local metric grid.
+    A real, if small, inaccuracy was caught here: the original version
+    always derived its own ref_lat from whatever points it was given,
+    meaning the route line and every individual sensor each got a
+    slightly different projection -- close enough to rarely matter, but
+    real error sitting right at the boundary of a 75m/150m tiered radius
+    system, where a few metres can flip a classification. Defaults to
+    the old self-derived behaviour ONLY when ref_lat isn't supplied, for
+    any caller that genuinely doesn't need cross-consistency.
     """
     import math
 
     if not points_latlon:
         return []
-    ref_lat = points_latlon[0][0]
+    if ref_lat is None:
+        ref_lat = points_latlon[0][0]
     ref_lat_rad = math.radians(ref_lat)
     m_per_deg_lat = 111_320.0
     m_per_deg_lon = 111_320.0 * math.cos(ref_lat_rad)
     return [(lon * m_per_deg_lon, lat * m_per_deg_lat) for lat, lon in points_latlon]
+
+
+def _walk_only_route_geometry(candidate_route: dict):
+    """
+    Extracts ONLY the WALK-mode step polylines from Google's route legs,
+    building a shapely (Multi)LineString of just the segments a
+    pedestrian is actually exposed to at street level.
+
+    REAL BUG THIS FIXES: the previous version decoded the route's single
+    TOP-LEVEL combined polyline, which includes transit segments (e.g. a
+    train travelling underground through the City Loop). A live test
+    matched sensors near Docklands against a route whose only actual
+    walking was near Flinders Street, purely because the train's
+    underground path geometrically swings near Docklands -- the commuter
+    was never anywhere near those sensors. Only WALK-mode steps represent
+    real pedestrian exposure.
+
+    Returns (geometry, ref_lat) -- ref_lat is the shared reference
+    latitude used to project every walk segment consistently, meant to
+    be reused for sensor projection too (see _match_sensors_to_route).
+    Returns (None, None) if there are no usable walk segments at all (a
+    fully-transit "route" with no walking, or missing/malformed leg
+    data) -- correctly resolves to Unknown downstream, not a guess.
+    """
+    from shapely.geometry import LineString, MultiLineString
+
+    legs = candidate_route.get("legs") or []
+    walk_points_per_segment: list[list[tuple[float, float]]] = []
+    for leg in legs:
+        for step in leg.get("steps", []):
+            if step.get("travelMode") != "WALK":
+                continue
+            encoded = (step.get("polyline") or {}).get("encodedPolyline")
+            if not encoded:
+                continue
+            points_latlon = decode_polyline(encoded)
+            if len(points_latlon) >= 2:
+                walk_points_per_segment.append(points_latlon)
+
+    if not walk_points_per_segment:
+        return None, None
+
+    # One shared reference latitude for the WHOLE route (first point of
+    # the first walk segment) -- every segment and every sensor checked
+    # against this route project into the same consistent metric grid.
+    ref_lat = walk_points_per_segment[0][0][0]
+
+    lines = [LineString(_project_points(pts, ref_lat=ref_lat)) for pts in walk_points_per_segment]
+    geometry = lines[0] if len(lines) == 1 else MultiLineString(lines)
+    return geometry, ref_lat
 
 
 def _route_line_geometry(candidate_route: dict):
@@ -100,6 +122,12 @@ def _route_line_geometry(candidate_route: dict):
     Decodes a candidate route's polyline and returns a projected shapely
     LineString, or None if geometry is missing/unusable (must resolve to
     Unknown downstream, not a crash or a guess).
+
+    SUPERSEDED for real scoring by _walk_only_route_geometry() above --
+    kept here only because it's still exercised by
+    test_decode_polyline_matches_google_canonical_example and similar
+    geometry-decoding tests that don't need the walk-only distinction.
+    Not called from score_candidate_routes()'s real scoring path anymore.
     """
     from shapely.geometry import LineString
 
@@ -147,12 +175,26 @@ def _exceeds_threshold(count: float, crowd_threshold: float) -> bool:
     return count > crowd_threshold
 
 
-def _match_sensors_to_route(route_line, sensor_observations: list[dict], catchment_radius_m: float):
+def _match_sensors_to_route(
+    route_line,
+    sensor_observations: list[dict],
+    direct_radius_m: float,
+    proxy_radius_m: float,
+    ref_lat: float,
+):
     """
-    Finds every sensor within catchment_radius_m of the route's line,
-    projected into the same metric CRS as the route geometry. Returns all
-    matches (not just the closest), since the contract wants a full
-    sensor_evidence list per route, not a single nearest match.
+    Finds every sensor within proxy_radius_m of the route's line (Vince's
+    two-tier evidence model), tagging each with match_type "direct" or
+    "proxy" depending on how close it actually is. Direct evidence is
+    close enough to trust on its own; proxy evidence is a wider,
+    weaker signal used only when nothing direct is available -- see
+    _score_one_route's evidence-hierarchy logic below.
+
+    ref_lat MUST be the same reference latitude the route_line itself was
+    projected with (see _walk_only_route_geometry / _project_points) --
+    projecting sensors with a different reference would put them in a
+    subtly different local metric grid than the route line, producing
+    real (if small) distance errors.
     """
     from shapely.geometry import Point
 
@@ -160,17 +202,15 @@ def _match_sensors_to_route(route_line, sensor_observations: list[dict], catchme
         return []
 
     matches = []
-    ref_lat = None
     for obs in sensor_observations:
         lat, lon = obs.get("latitude"), obs.get("longitude")
         if lat is None or lon is None:
             continue
-        if ref_lat is None:
-            ref_lat = lat
-        projected = _project_points([(lat, lon)])[0]
+        projected = _project_points([(lat, lon)], ref_lat=ref_lat)[0]
         dist_m = Point(projected).distance(route_line)
-        if dist_m <= catchment_radius_m:
-            matches.append({**obs, "_distance_m": round(dist_m, 1)})
+        if dist_m <= proxy_radius_m:
+            match_type = "direct" if dist_m <= direct_radius_m else "proxy"
+            matches.append({**obs, "_distance_m": round(dist_m, 1), "match_type": match_type})
     return matches
 
 
@@ -178,7 +218,8 @@ def score_candidate_routes(
     candidate_routes: list[dict],
     sensor_observations: list[dict],
     crowd_threshold: float,
-    catchment_radius_m: float = DEFAULT_CATCHMENT_RADIUS_M,
+    direct_radius_m: float = DEFAULT_DIRECT_RADIUS_M,
+    proxy_radius_m: float = DEFAULT_PROXY_RADIUS_M,
 ) -> dict:
     """
     THE replacement-point function. See module docstring for design notes.
@@ -188,7 +229,7 @@ def score_candidate_routes(
     stays stable regardless of the internal implementation change.
     """
     scored_routes = [
-        _score_one_route(route, sensor_observations, crowd_threshold, catchment_radius_m)
+        _score_one_route(route, sensor_observations, crowd_threshold, direct_radius_m, proxy_radius_m)
         for route in candidate_routes
     ]
 
@@ -245,9 +286,10 @@ def _score_one_route(
     candidate_route: dict,
     sensor_observations: list[dict],
     crowd_threshold: float,
-    catchment_radius_m: float,
+    direct_radius_m: float,
+    proxy_radius_m: float,
 ) -> dict:
-    route_line = _route_line_geometry(candidate_route)
+    route_line, ref_lat = _walk_only_route_geometry(candidate_route)
 
     if route_line is None:
         return {
@@ -261,10 +303,23 @@ def _score_one_route(
             "data_mode": "unavailable",
         }
 
-    nearby = _match_sensors_to_route(route_line, sensor_observations, catchment_radius_m)
-    usable = [obs for obs in nearby if obs.get("availability") == "available"]
+    nearby = _match_sensors_to_route(route_line, sensor_observations, direct_radius_m, proxy_radius_m, ref_lat)
+    usable_direct = [obs for obs in nearby if obs["match_type"] == "direct" and obs.get("availability") == "available"]
+    usable_proxy = [obs for obs in nearby if obs["match_type"] == "proxy" and obs.get("availability") == "available"]
 
-    if not usable:
+    # Evidence hierarchy (Vince's v81 design): direct evidence, if any
+    # exists, is used EXCLUSIVELY -- proxy evidence is not blended in,
+    # not even to corroborate. Proxy is only consulted as a fallback when
+    # there's no direct evidence at all. A closer, more specific reading
+    # should never be diluted or overridden by a farther, less specific one.
+    if usable_direct:
+        evidence, coverage = usable_direct, "direct"
+    elif usable_proxy:
+        evidence, coverage = usable_proxy, "proxy"
+    else:
+        evidence, coverage = [], None
+
+    if not evidence:
         return {
             **candidate_route,
             "sensory_level": "Unknown",
@@ -277,7 +332,7 @@ def _score_one_route(
         }
 
     exceeding = [
-        obs for obs in usable
+        obs for obs in evidence
         if obs.get("pedestrian_count_per_minute") is not None
         and _exceeds_threshold(obs["pedestrian_count_per_minute"], crowd_threshold)
     ]
@@ -290,14 +345,14 @@ def _score_one_route(
     else:
         hotspot = None
         sensory_level = "Low"
-        confidence = _confidence_tier(len(usable))  # how many independent sensors support this "calm" call
+        confidence = _confidence_tier(len(evidence))  # how many independent sensors support this "calm" call
 
     return {
         **candidate_route,
         "sensory_level": sensory_level,
-        "sensor_evidence": usable,
+        "sensor_evidence": evidence,
         "hotspot": hotspot,
-        "coverage": "supported",
+        "coverage": coverage,  # "direct" or "proxy", per the evidence hierarchy above
         "confidence": confidence,
         "recommended": False,
         "data_mode": "live",
