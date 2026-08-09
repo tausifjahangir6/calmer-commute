@@ -1,0 +1,22 @@
+reference_time,cautious_label,default_label,relaxed_label
+2024-08-13 00:00:00,Low,Low,Low
+2024-09-18 02:00:00,Low,Low,Low
+2024-10-24 07:00:00,Low,Low,Low
+2024-11-29 09:00:00,High,Low,Low
+2025-01-04 11:00:00,High,Low,Low
+2025-02-09 13:00:00,High,High,High
+2025-03-17 15:00:00,High,High,High
+2025-04-22 17:00:00,High,High,High
+2025-05-28 19:00:00,High,High,Low
+2025-07-03 21:00:00,High,Low,Low
+2025-08-08 23:00:00,Low,Low,Low
+2025-09-14 01:00:00,Low,Low,Low
+2025-10-20 06:00:00,Low,Low,Low
+2025-11-25 08:00:00,High,Low,Low
+2025-12-31 10:00:00,High,Low,Low
+2026-02-05 12:00:00,High,High,High
+2026-03-13 14:00:00,High,High,High
+2026-03-13 17:00:00,High,High,High
+2026-04-18 16:00:00,High,High,High
+2026-05-24 18:00:00,High,High,Low
+2026-06-29 20:00:00,High,Low,Low
