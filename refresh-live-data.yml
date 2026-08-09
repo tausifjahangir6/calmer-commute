@@ -1,0 +1,67 @@
+# Scheduled refresh of the live pedestrian feed.
+#
+# Place at: .github/workflows/refresh-live-data.yml
+#
+# Runs on GitHub's servers, not anyone's laptop. Free for public repositories.
+#
+# WHY NOT ON NEON
+#   Neon is managed PostgreSQL, not a compute platform. It cannot make HTTP
+#   requests to the City of Melbourne API. Something has to execute the fetch,
+#   and GitHub Actions is the piece of infrastructure this team already has.
+#
+# SETUP (one time)
+#   1. Repo -> Settings -> Secrets and variables -> Actions -> New repository secret
+#      Name:  DATABASE_URL
+#      Value: postgresql://neondb_owner:npg_zvL9lDBndPY4@ep-xxx.ap-southeast-2.aws.neon.tech/neondb?sslmode=require
+#
+#   2. Commit this file to .github/workflows/
+#
+#   3. Repo -> Actions tab -> "Refresh live pedestrian data" -> Run workflow
+#      (tests it immediately rather than waiting for the schedule)
+#
+# The secret is encrypted, never appears in logs, and is not visible to anyone
+# browsing the public repository. GitHub masks it automatically if a script
+# ever tries to print it.
+
+name: Refresh live pedestrian data
+
+on:
+  schedule:
+    # Every 10 minutes. The source feed runs ~40 minutes behind real time, so
+    # polling faster gains nothing and burns Neon compute hours.
+    # NOTE: cron here is UTC, and GitHub may delay runs by a few minutes under
+    # load. Neither matters at this cadence.
+    - cron: '*/10 * * * *'
+
+  # Adds a "Run workflow" button for manual triggering before a demo.
+  workflow_dispatch:
+
+# Stops overlapping runs if one is slow.
+concurrency:
+  group: refresh-live-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install --quiet requests psycopg2-binary
+
+      - name: Refresh minute feed
+        env:
+          # Must be the OWNER string -- this job WRITES to serving.minute_count.
+          # app_reader is read-only and will fail here.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DB_SCHEMA: serving
+        run: python scripts/ingestion/refresh_live.py
