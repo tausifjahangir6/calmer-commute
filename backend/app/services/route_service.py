@@ -5,6 +5,8 @@ from hashlib import sha256
 
 from .google_maps_service import generate_candidate_routes
 
+from app.ai.route_scoring import score_candidate_routes
+from .sensor_service import load_sensor_observations
 
 def compare_routes(
     request_data: dict,
@@ -76,46 +78,10 @@ def compare_routes(
 
 
 def _score_live_candidates(request_data: dict, candidates: list[dict], sensors: tuple[dict, ...]) -> dict:
-    """Preserve real route geometry while disclosing unavailable live crowd observations.
-
-    Sensor locations alone cannot justify High or Low. Until the data adapter
-    supplies timestamped observations and route matching, live Google routes
-    are returned as Unknown rather than being given fabricated crowd labels.
-    """
-
-    routes = []
-    for candidate in candidates:
-        routes.append(
-            {
-                **candidate,
-                "sensory_level": "Unknown",
-                "sensor_evidence": [],
-                "hotspot": None,
-                "coverage": "routing_live_crowd_unavailable",
-                "recommended": False,
-                "data_mode": "mixed",
-            }
-        )
-    fastest = min(routes, key=lambda route: route["duration_minutes"])
-    fastest["recommended"] = True
-    return {
-        "request": request_data,
-        "routes": routes,
-        "recommendation": {
-            "route_id": fastest["route_id"],
-            "reason": "Fastest candidate route; current crowd evidence is unavailable.",
-            "trade_off": "No supported lower-crowd comparison is currently available.",
-            "lower_crowd_alternative_available": False,
-        },
-        "metadata": {
-            "data_mode": "mixed",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "limitations": [
-                "Route geometry and travel estimates are supplied by Google Routes.",
-                "High/Low scoring remains Unknown until timestamped pedestrian observations are integrated.",
-            ],
-        },
-    }
+    sensor_observations = list(load_sensor_observations())
+    result = score_candidate_routes(candidates, sensor_observations, request_data["crowd_threshold"])
+    result["request"] = request_data
+    return result
 
 
 def _empty_live_result(request_data: dict) -> dict:
