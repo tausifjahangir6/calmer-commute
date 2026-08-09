@@ -1,15 +1,18 @@
 services:
   backend:
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: calmer-commute-backend
     ports:
       - "5000:5000"
     volumes:
-      - ./backend:/app
+      - ./backend:/app/backend
+      - ./ai:/app/ai
     environment:
       FLASK_DEBUG: "1"
       PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "/app/ai/models:/app/ai/features"
     healthcheck:
       test:
         - CMD
