@@ -9,6 +9,8 @@ services:
     volumes:
       - ./backend:/app/backend
       - ./ai:/app/ai
+    env_file:
+      - backend/.env
     environment:
       FLASK_DEBUG: "1"
       PYTHONUNBUFFERED: "1"
