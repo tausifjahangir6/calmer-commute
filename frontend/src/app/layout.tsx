@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Manrope } from "next/font/google";
+import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import NavBar from "@/components/NavBar";
 
