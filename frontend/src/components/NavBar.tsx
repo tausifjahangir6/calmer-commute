@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const primaryLink = { href: "/onboard", label: "Onboard" };
+const primaryLink = { href: "/onboard", label: "Calmer Commute" };
 
 const centerLinks = [
   { href: "/", label: "Home" },
