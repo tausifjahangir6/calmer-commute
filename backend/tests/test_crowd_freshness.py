@@ -57,3 +57,27 @@ def test_per_sensor_freshness_is_independent_of_other_sensors(monkeypatch):
     assert by_id[2]["freshness"] == "stale"
     assert by_id[2]["peoplePerMinute"] is None
     assert by_id[2]["evidence"] == "unavailable"
+
+
+def test_sensor_at_exactly_60_minutes_is_still_fresh(monkeypatch):
+    """FEED_FRESHNESS_MINUTES uses <=, so a reading exactly at the
+    threshold should count as fresh, not stale. Mocks _age_minutes
+    directly rather than real timedelta arithmetic so the boundary is
+    exact and the test can't flake from wall-clock drift between
+    computing the timestamp and the assertion running.
+    """
+    monkeypatch.setattr(crowd, "FEED_FRESHNESS_MINUTES", 60)
+    monkeypatch.setattr(crowd, "_age_minutes", lambda value: 60.0)
+
+    assert crowd._sensor_is_fresh("2026-08-10T00:00:00Z") is True
+
+
+def test_sensor_at_61_minutes_is_stale(monkeypatch):
+    """One minute past the threshold must resolve to stale -- confirms
+    the boundary is a real cutoff, not an off-by-one that happens to
+    pass at the exact edge but never actually excludes anything.
+    """
+    monkeypatch.setattr(crowd, "FEED_FRESHNESS_MINUTES", 60)
+    monkeypatch.setattr(crowd, "_age_minutes", lambda value: 61.0)
+
+    assert crowd._sensor_is_fresh("2026-08-10T00:00:00Z") is False
