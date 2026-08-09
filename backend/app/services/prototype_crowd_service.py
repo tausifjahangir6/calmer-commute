@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 API = "https://data.melbourne.vic.gov.au/api/explore/v2.1/catalog/datasets"
 MINUTE_DATASET = "pedestrian-counting-system-past-hour-counts-per-minute"
@@ -12,6 +13,28 @@ HOURLY_DATASET = "pedestrian-counting-system-monthly-counts-per-hour"
 LOCATIONS_DATASET = "pedestrian-counting-system-sensor-locations"
 WINDOW_MINUTES = 15
 FEED_FRESHNESS_MINUTES = 60
+MELBOURNE_TZ = ZoneInfo("Australia/Melbourne")
+
+# Historical-estimate fallback (for sensors with a live reporting gap, not
+# a confirmed zero -- see _historical_estimate). 4 weeks stays inside one
+# Melbourne season (~13 weeks each), so an estimate never quietly blends
+# winter data into a summer reading.
+HISTORICAL_LOOKBACK_WEEKS = 4
+# Samples for the same weekday/hour must not span more than this
+# multiple between busiest and quietest to be trusted; e.g. 20/90/45/88
+# is a 4.5x spread (90/20) and is correctly rejected as unreliable,
+# while 0/0/1/0 is a 1x spread (using max(min,1) to avoid dividing by
+# zero) and is trivially accepted.
+HISTORICAL_CONSISTENCY_MAX_RATIO = 3.0
+
+# Decommissioned-sensor safety net (backup to sensor_location.status, in
+# case that field lags behind reality). 6 checkpoints spread across quiet
+# hours AND both commute peaks, checked every day for 4 weeks -- 168
+# checkpoints total. Only flags a sensor if EVERY one of them reads zero;
+# any single nonzero reading anywhere proves the sensor is alive.
+DECOMMISSIONED_CHECK_HOURS = (2, 6, 9, 12, 17, 21)
+DECOMMISSIONED_CHECK_DAYS = 28
+
 MAP_SENSOR_IDS = (1,2,3,4,5,6,8,9,10,11,12,14,17,18,19,20,21,23,24,25,27,29,30,31,35,36,37,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,56,58,59,61,62,63,66,67,68,69,70,71,72,75,76,77,79,84,85,86,87,107)
 ROUTE_SENSORS = {
     "train": ({"id": 41, "name": "Flinders Lane-Swanston Street (West)"}, {"id": 53, "name": "Collins Street (North)"}),
@@ -35,7 +58,7 @@ def get_crowd_payload(scenario: str | None = None) -> dict:
     map_sensors = _read_map_sensors(feed_latest, active_ids)
     age_minutes = _age_minutes(feed_latest)
     status = "unavailable" if feed_latest is None else ("fresh" if age_minutes <= FEED_FRESHNESS_MINUTES else "stale")
-    any_usable = any(item["freshness"] in ("fresh", "delayed") and item["peoplePerMinute"] is not None for item in map_sensors)
+    any_usable = any(item["freshness"] in ("fresh", "delayed", "estimated") and item["peoplePerMinute"] is not None for item in map_sensors)
     safe_status = status if any_usable else "unavailable"
     return {
         "ok": safe_status == "fresh", "dataStatus": safe_status, "latestObservation": feed_latest,
@@ -127,6 +150,114 @@ def _read_active_sensor_ids() -> set[int]:
     return active_ids
 
 
+def _fetch_same_weekday_hour_history(location_id: int, target_dt_local: datetime, weeks: int) -> list[float]:
+    """
+    Returns up to `weeks` historical hourly counts (converted to a
+    per-minute rate) for this sensor, matching target_dt_local's hour-of-
+    day AND day-of-week, most recent first. Overfetches (weeks * 10 rows)
+    and filters client-side, since the Opendatasoft API has no native
+    day-of-week filter -- only hourday, not weekday, is queryable
+    directly. A 4-week lookback from "now" stays inside one Melbourne
+    season (~13 weeks each), so this never quietly blends e.g. winter
+    data into a summer estimate.
+    """
+    hour_day = target_dt_local.hour
+    rows = _read_json(
+        HOURLY_DATASET,
+        limit=weeks * 10,
+        where=f"location_id={location_id} and hourday={hour_day}",
+        order_by="sensing_date desc",
+    )
+    target_weekday = target_dt_local.weekday()
+    counts = []
+    for row in rows:
+        sensing_date = row.get("sensing_date")
+        total = row.get("pedestriancount")
+        if not sensing_date or total is None:
+            continue
+        try:
+            row_date = datetime.fromisoformat(str(sensing_date)[:10]).date()
+        except ValueError:
+            continue
+        if row_date.weekday() != target_weekday:
+            continue
+        counts.append(float(total) / 60)  # hourly total -> people-per-minute rate
+        if len(counts) >= weeks:
+            break
+    return counts
+
+
+def _historical_estimate(location_id: int, at_dt_local: datetime) -> tuple[float | None, bool]:
+    """
+    Returns (estimated_people_per_minute, reliable). `reliable` is False
+    when there's fewer than HISTORICAL_LOOKBACK_WEEKS matching samples,
+    or when the samples disagree with each other too much to trust an
+    average (e.g. 20/90/45/88 -- genuinely inconsistent, not a stable
+    pattern -- vs 0/0/1/0, which is trivially consistent). Callers must
+    treat an unreliable result as "don't guess", per US1.1's rule that
+    missing evidence must never quietly become a Low result.
+    """
+    samples = _fetch_same_weekday_hour_history(location_id, at_dt_local, HISTORICAL_LOOKBACK_WEEKS)
+    if len(samples) < HISTORICAL_LOOKBACK_WEEKS:
+        return None, False
+    average = sum(samples) / len(samples)
+    ratio = max(samples) / max(min(samples), 1.0)
+    reliable = ratio <= HISTORICAL_CONSISTENCY_MAX_RATIO
+    return round(average, 1), reliable
+
+
+def _sensor_appears_decommissioned(location_id: int) -> bool:
+    """
+    A sensor whose live minute-level feed has gone quiet might just have
+    a normal reporting gap (see _historical_estimate) -- but a sensor
+    that reads zero at EVERY checkpoint, including known commute peaks,
+    for weeks on end, is more likely dead or removed than genuinely
+    always-empty. Checks DECOMMISSIONED_CHECK_HOURS across the last
+    DECOMMISSIONED_CHECK_DAYS days (168 checkpoints total by default).
+    Only trips if we see the FULL expected history and every single
+    checkpoint is zero; any nonzero reading, or simply not enough
+    history to judge, means "not flagged" -- this is a backup safety
+    net alongside sensor_location.status, in case that field lags
+    behind reality, not the primary active/inactive signal.
+
+    Filters by hour CLIENT-SIDE rather than a `hourday in (...)` where
+    clause -- the API rejected that syntax with a 400 when tested live
+    (2026-08-10), the same lesson as _read_active_sensor_ids: don't
+    assume the API supports a clause just because it looks valid.
+    Paginates for the same reason that fix exists -- a single request
+    can silently cap below what DECOMMISSIONED_CHECK_DAYS needs.
+    """
+    expected = DECOMMISSIONED_CHECK_DAYS * len(DECOMMISSIONED_CHECK_HOURS)
+    page_size = 100
+    offset = 0
+    checked = 0
+    max_offset = DECOMMISSIONED_CHECK_DAYS * 24 * 2  # safety cap -- never loop indefinitely
+    while offset < max_offset:
+        rows = _read_json(
+            HOURLY_DATASET,
+            limit=page_size,
+            offset=offset,
+            where=f"location_id={location_id}",
+            order_by="sensing_date desc",
+        )
+        if not rows:
+            break
+        for row in rows:
+            hour = row.get("hourday")
+            total = row.get("pedestriancount")
+            if hour is None or total is None or int(hour) not in DECOMMISSIONED_CHECK_HOURS:
+                continue
+            if float(total) > 0:
+                return False  # proof of life -- not decommissioned
+            checked += 1
+            if checked >= expected:
+                return True
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    return checked >= expected
+
+
 def _read_map_sensors(feed_latest: str | None, active_ids: set[int] | None) -> list[dict]:
     batches = [MAP_SENSOR_IDS[index:index + 4] for index in range(0, len(MAP_SENSOR_IDS), 4)]
     def read_batch(batch):
@@ -138,20 +269,61 @@ def _read_map_sensors(feed_latest: str | None, active_ids: set[int] | None) -> l
         sensor_id = int(row.get("location_id", -1))
         if sensor_id in grouped and row.get("sensing_datetime") and _non_negative(row.get("total_of_directions")):
             grouped[sensor_id].append(row)
-    latest_dt = _parse(feed_latest) if feed_latest else None
+
+    now_local = datetime.now(MELBOURNE_TZ)
     result = []
     for sensor_id in MAP_SENSOR_IDS:
         rows = sorted(grouped[sensor_id], key=lambda row: row["sensing_datetime"], reverse=True)
         latest_observation = rows[0]["sensing_datetime"] if rows else None
         operational = "unknown" if active_ids is None else ("active" if sensor_id in active_ids else "inactive")
-        if latest_dt is None or operational != "active":
-            result.append(_map_reading(sensor_id, None, latest_observation, 0, "stale" if latest_dt else "unavailable", "unavailable", operational)); continue
-        if not _sensor_is_fresh(latest_observation):
-            result.append(_map_reading(sensor_id, None, latest_observation, 0, "stale", "unavailable", operational)); continue
-        start = latest_dt.timestamp() - (WINDOW_MINUTES - 1) * 60
-        recent = [row for row in rows if start <= _parse(row["sensing_datetime"]).timestamp() <= latest_dt.timestamp()]
-        count = round(sum(int(row["total_of_directions"]) for row in recent) / WINDOW_MINUTES)
-        result.append(_map_reading(sensor_id, count, latest_observation, len(recent), "fresh", "observed" if recent else "inferred-zero", operational))
+
+        if operational != "active":
+            result.append(_map_reading(sensor_id, None, latest_observation, 0, "unavailable", "unavailable", operational))
+            continue
+
+        # STEP 1 (fix, 2026-08-10): this sensor's OWN 15-minute window,
+        # anchored to ITS OWN latest reading -- not the single freshest
+        # sensor across the whole feed. Previously a global window meant
+        # a sensor could clear the freshness gate on its own recency but
+        # still miss the window entirely because it was built around a
+        # DIFFERENT sensor's timestamp.
+        recent = []
+        if latest_observation and _sensor_is_fresh(latest_observation):
+            own_latest_dt = _parse(latest_observation)
+            start = own_latest_dt.timestamp() - (WINDOW_MINUTES - 1) * 60
+            recent = [row for row in rows if start <= _parse(row["sensing_datetime"]).timestamp() <= own_latest_dt.timestamp()]
+
+        if recent:
+            count = round(sum(int(row["total_of_directions"]) for row in recent) / WINDOW_MINUTES)
+            result.append(_map_reading(sensor_id, count, latest_observation, len(recent), "fresh", "observed", operational))
+            continue
+
+        # STEP 2-5: the sensor's own window came up empty -- either it's
+        # stale beyond FEED_FRESHNESS_MINUTES, or it's fresh but simply
+        # didn't report inside this exact 15-minute slice. EITHER WAY,
+        # this is a reporting gap, not proof of zero pedestrians -- never
+        # silently treat an empty window as a confirmed zero.
+        #
+        # Both live calls below are wrapped: a live-request path (this
+        # runs on every /api/routes/compare call) must degrade to Unknown
+        # on a transient API failure, never crash the whole endpoint over
+        # one background historical lookup.
+        try:
+            decommissioned = _sensor_appears_decommissioned(sensor_id)
+        except Exception:
+            decommissioned = False
+        if decommissioned:
+            result.append(_map_reading(sensor_id, None, latest_observation, 0, "unavailable", "sensor-inactive-suspected", operational))
+            continue
+
+        try:
+            estimate, reliable = _historical_estimate(sensor_id, now_local)
+        except Exception:
+            estimate, reliable = None, False
+        if reliable:
+            result.append(_map_reading(sensor_id, round(estimate), latest_observation, 0, "estimated", "hourly-estimate", operational))
+        else:
+            result.append(_map_reading(sensor_id, None, latest_observation, 0, "stale" if latest_observation else "unavailable", "insufficient-history", operational))
     return result
 
 
@@ -194,10 +366,7 @@ def _age_minutes(value): return (datetime.now(timezone.utc) - _parse(value).asti
 def _sensor_is_fresh(latest_observation: str | None) -> bool:
     """A sensor's own reading is fresh iff ITS OWN observation is within
     FEED_FRESHNESS_MINUTES of now -- not whether the feed's single newest
-    reading across all 65 sensors is recent. Isolated here so a future
-    swap to a per-row age source (e.g. serving.v_current_density's
-    data_age_minutes) only changes what feeds this check, not the
-    threshold logic itself.
+    reading across all 65 sensors is recent.
     """
     return latest_observation is not None and _age_minutes(latest_observation) <= FEED_FRESHNESS_MINUTES
 

@@ -192,7 +192,7 @@ def _point_to_segment(point: dict, start: dict, end: dict) -> float:
 
 def _usable(reading: dict) -> bool:
     return (
-        reading.get("freshness") in {"fresh", "delayed"}
+        reading.get("freshness") in {"fresh", "delayed", "estimated"}
         and reading.get("peoplePerMinute") is not None
         and reading.get("operationalStatus") == "active"
     )
