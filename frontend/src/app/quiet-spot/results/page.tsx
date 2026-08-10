@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import MapPreview from "@/components/MapPreview";
 import RouteCard from "@/components/RouteCard";
@@ -13,7 +13,7 @@ import {
   type Sensitivity,
 } from "@/lib/mock-data";
 
-export default function QuietSpotResultsPage() {
+function QuietSpotResultsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const from = searchParams.get("from") ?? "";
@@ -147,5 +147,13 @@ export default function QuietSpotResultsPage() {
 
       <MapPreview className="h-72 md:sticky md:top-24" />
     </div>
+  );
+}
+
+export default function QuietSpotResultsPage() {
+  return (
+    <Suspense fallback={<div className="text-sm text-slate-600">Loading route results...</div>}>
+      <QuietSpotResultsContent />
+    </Suspense>
   );
 }

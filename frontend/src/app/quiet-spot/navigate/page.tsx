@@ -1,10 +1,11 @@
 "use client";
 
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import MapPreview from "@/components/MapPreview";
 import { mockRoutes } from "@/lib/mock-data";
 
-export default function NavigatePage() {
+function NavigateContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const routeId = searchParams.get("route");
@@ -50,5 +51,13 @@ export default function NavigatePage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function NavigatePage() {
+  return (
+    <Suspense fallback={<div className="text-sm text-slate-600">Loading route details...</div>}>
+      <NavigateContent />
+    </Suspense>
   );
 }
