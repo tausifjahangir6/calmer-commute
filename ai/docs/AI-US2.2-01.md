@@ -282,6 +282,34 @@ Two entry points were built and tested against the real pipeline:
 
 ## 9. Outstanding / next steps
 
+- **Post-review additions (found by re-checking against `AI_Team_Route_Scoring_Expectations.docx`,
+  the downstream route-scoring team's handover spec) — both implemented, tested, verified:**
+  - **`forecast_timestamp`** — the API response previously only exposed `generated_at` (when the
+    prediction was computed) and `forecast_horizon_minutes`; a consumer had to add the two
+    manually to get the hour the forecast is actually *for*. Now returned explicitly, computed
+    from the same instant as `generated_at` so the two are always exactly `horizon_minutes`
+    apart, never off by request-processing time. `generated_at` is unchanged, both fields are
+    kept since they answer different questions.
+  - **`crowd_level` (LOW/MEDIUM/HIGH/UNKNOWN)** — checked first against AI-US2.2-01's own
+    LeanKit acceptance criteria (re-verified against the original ticket text, not memory):
+    **not required there** — the card's own definition of "alert" is binary
+    (threshold-crossing), matching §4a/§8 above. The four-tier requirement comes from a
+    *different*, real, written source: the route-scoring team's own handover doc, which
+    explicitly asks for `LOW | MEDIUM | HIGH | UNKNOWN`. Implemented as a **new, separate
+    field**, not a change to `predicted_level` — `predicted_level` still answers "is this above
+    *this user's* threshold" (the existing, live, tested contract per
+    `INTEGRATION_GUIDE.md` §4.4); `crowd_level` answers "where does this sit on a fixed,
+    documented scale," using bounds from `database/schema/01_schema.sql`'s `density_band`
+    table (Low 0–50 / Medium 51–150 / High 151+, hourly), converted to the live endpoint's
+    per-minute units via ÷60.
+    **Flagged, not silently assumed correct:** the ÷60 conversion assumes hourly traffic is
+    roughly uniform across the hour, which real pedestrian patterns (e.g. a lunchtime spike)
+    don't strictly satisfy. This is a documented approximation, not a validated calibration —
+    worth revisiting against real per-sensor magnitudes if it proves miscalibrated in practice.
+    5 new regression tests added (`test_predictions.py`): timestamp arithmetic, a real
+    Medium-band case, all four `density_band` boundaries reproduced exactly (50/51/150/151
+    hourly → Low/Medium/Medium/High), and the Unknown-on-missing-data rule extended to the new
+    field. All 30 backend tests pass, including every pre-existing test unmodified.
 - **US1.3 integration — interim solution implemented, no longer fully blocked.**
   Built and tested `alert_thresholds.py`: a per-sensor base threshold (75th percentile,
   computed offline) scaled by a user sensitivity multiplier (cautious ×0.7 / default ×1.0 /
