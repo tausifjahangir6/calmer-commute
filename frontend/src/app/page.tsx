@@ -39,6 +39,21 @@ type CrowdData = {
   mapSensors: { id: number; peoplePerMinute: number | null; latestObservation: string | null; sampleMinutes: number; freshness: SensorFreshness; evidence: "observed" | "inferred-zero" | "unavailable"; operationalStatus: "active" | "inactive" | "unknown" }[];
   scenario?: { id: string; label: string; observationWindow: string };
 };
+type PredictionResponse = {
+  sensor_id: string;
+  forecast_horizon_minutes: number;
+  forecast_timestamp: string;
+  predicted_count_per_minute: number | null;
+  predicted_level: "High" | "Low" | "Unknown";
+  crowd_level: "Low" | "Medium" | "High" | "Unknown";
+  crowd_threshold: number;
+  model_version: string;
+  confidence: string | null;
+  validation_status: string;
+  generated_at: string;
+  data_mode: string;
+  limitation: string;
+};
 
 const HOME = "903/8 Pearl River Road, Docklands VIC 3008";
 const WORK = "Growth Factory, 3/292 Flinders St, Melbourne VIC 3000";
@@ -301,6 +316,26 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
     ? usableSensors.find((sensor) => sensor.id === displayedHotspotRoute.hotspotId)
     : null;
   const hotspotMeta = displayedHotspotRoute?.route.nearbySensors.find((sensor) => sensor.id === displayedHotspotRoute.hotspotId);
+  const [hotspotForecast, setHotspotForecast] = useState<PredictionResponse | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const sensorId = hotspotSensor?.id;
+    if (sensorId === undefined || sensorId === null) {
+      setHotspotForecast(null);
+      return;
+    }
+    async function loadForecast() {
+      try {
+        const response = await fetch(`/api/predictions?sensor_id=${sensorId}&crowd_threshold=${crowdLimit}`, { cache: "no-store" });
+        const payload = await response.json() as PredictionResponse;
+        if (!cancelled) setHotspotForecast(payload);
+      } catch {
+        if (!cancelled) setHotspotForecast(null);
+      }
+    }
+    loadForecast();
+    return () => { cancelled = true; };
+  }, [hotspotSensor?.id, crowdLimit]);
   const verifiedAvoidance = Boolean(avoidedRoute && recommended && displayedHotspotRoute?.hotspotId === avoidedRoute.hotspotId);
   const noLowRoute = assessed.length > 0 && assessed.every((route) => route.crowdRisk === "High");
   const assessedRouteIds = assessed.map((route) => route.id).join(",");
@@ -326,14 +361,17 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
 
       <div className="route-decision-stack">
         {displayedHotspotRoute && hotspotSensor && hotspotMeta && (
-          <article className="hotspot-avoidance" aria-live="polite">
-            <div className="hotspot-heading"><span aria-hidden="true">!</span><div><small>Supported crowd hotspot</small><strong>{hotspotMeta.name}</strong></div></div>
-            <p><b>{hotspotSensor.peoplePerMinute} people/min · High</b> on the {displayedHotspotRoute.route.service} corridor · Sensor {hotspotSensor.id} · {formatObservation(hotspotSensor.latestObservation)}</p>
-            {verifiedAvoidance && recommended ? <>
-              <div className="avoidance-result"><span aria-hidden="true">✓</span><p><strong>{recommended.service} recommended</strong><small>Avoids this supported High-crowd corridor.</small></p></div>
-              <p className="explicit-tradeoff"><strong>Trade-off:</strong> {recommended.durationMinutes === displayedHotspotRoute.route.durationMinutes ? "same journey time" : `${Math.abs(recommended.durationMinutes - displayedHotspotRoute.route.durationMinutes)} min ${recommended.durationMinutes > displayedHotspotRoute.route.durationMinutes ? "longer" : "shorter"}`} · {recommended.walkingMinutes === displayedHotspotRoute.route.walkingMinutes ? "same walking time" : `${Math.abs(recommended.walkingMinutes - displayedHotspotRoute.route.walkingMinutes)} min ${recommended.walkingMinutes > displayedHotspotRoute.route.walkingMinutes ? "more" : "less"} walking`}</p>
-            </> : <p className="explicit-tradeoff"><strong>No verified lower-crowd alternative avoids this hotspot right now.</strong></p>}
-          </article>
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+            <article className="hotspot-avoidance" aria-live="polite" style={{ flex: "1 1 260px" }}>
+              <div className="hotspot-heading"><span aria-hidden="true">!</span><div><small>Supported crowd hotspot</small><strong>{hotspotMeta.name}</strong></div></div>
+              <p><b>{hotspotSensor.peoplePerMinute} people/min · High</b> on the {displayedHotspotRoute.route.service} corridor · Sensor {hotspotSensor.id} · {formatObservation(hotspotSensor.latestObservation)}</p>
+              {verifiedAvoidance && recommended ? <>
+                <div className="avoidance-result"><span aria-hidden="true">✓</span><p><strong>{recommended.service} recommended</strong><small>Avoids this supported High-crowd corridor.</small></p></div>
+                <p className="explicit-tradeoff"><strong>Trade-off:</strong> {recommended.durationMinutes === displayedHotspotRoute.route.durationMinutes ? "same journey time" : `${Math.abs(recommended.durationMinutes - displayedHotspotRoute.route.durationMinutes)} min ${recommended.durationMinutes > displayedHotspotRoute.route.durationMinutes ? "longer" : "shorter"}`} · {recommended.walkingMinutes === displayedHotspotRoute.route.walkingMinutes ? "same walking time" : `${Math.abs(recommended.walkingMinutes - displayedHotspotRoute.route.walkingMinutes)} min ${recommended.walkingMinutes > displayedHotspotRoute.route.walkingMinutes ? "more" : "less"} walking`}</p>
+              </> : <p className="explicit-tradeoff"><strong>No verified lower-crowd alternative avoids this hotspot right now.</strong></p>}
+            </article>
+            <HotspotForecastCard forecast={hotspotForecast} sensorName={hotspotMeta.name} />
+          </div>
         )}
         <button className="primary-action" onClick={onContinue} disabled={!selectedDynamic}>{selectedDynamic ? `Start ${selectedDynamic.service} journey` : "Waiting for Google routes"}</button>
       </div>
@@ -405,6 +443,29 @@ function RouteCard(props: { rank: number; title: string; transportMode: string; 
       <small className="route-evidence">{props.evidence}</small>
       <small className="route-tradeoff">{props.tradeoff}</small>
     </button>
+  );
+}
+function HotspotForecastCard({ forecast, sensorName }: { forecast: PredictionResponse | null; sensorName: string }) {
+  // Alert triggers off crowd_level (a fixed scale, calibrated to the
+  // forecast's own magnitude via density_band) -- not predicted_level,
+  // which compares against crowd_limit, a scale built for bursty CURRENT
+  // minute-counts (11-50+/min), not smoothed hourly-average forecasts
+  // (typically under 1/min). Comparing the forecast to that slider means
+  // the alert could almost never fire in practice.
+  if (!forecast || forecast.crowd_level === "Low" || forecast.crowd_level === "Unknown") {
+    return null;
+  }
+  const count = forecast.predicted_count_per_minute;
+  return (
+    <article className="hotspot-avoidance" aria-live="polite" style={{ flex: "1 1 260px" }}>
+      <div className="hotspot-heading"><span aria-hidden="true">⏱</span><div><small>Forecast alert</small><strong>{sensorName}</strong></div></div>
+      <p><b>{count} people/min expected</b> in {forecast.forecast_horizon_minutes} min · {forecast.crowd_level}</p>
+      <p className="explicit-tradeoff">
+        {forecast.data_mode === "live"
+          ? `Validated forecast · confidence: ${forecast.confidence ?? "unknown"}`
+          : "Forecast not yet validated in this environment."}
+      </p>
+    </article>
   );
 }
 
