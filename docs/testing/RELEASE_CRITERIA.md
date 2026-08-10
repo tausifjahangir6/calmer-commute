@@ -43,7 +43,7 @@ npm run build
 ```bash
 python -m pip install --upgrade pip
 pip install pip-audit
-python -m pip_audit --fail-on high
+python -m pip_audit --format json > python-security-report.json && python -c "import json,sys; data=json.load(open('python-security-report.json')); sys.exit(1 if any(len(dep.get('vulns', [])) for dep in data.get('dependencies', [])) else 0)"
 cd frontend
 npm ci
 npm audit --audit-level=high

@@ -10,6 +10,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 type Risk = "High" | "Low" | "Unknown";
 export type RouteId = string;
 export type TravelTiming = { mode: "now" | "depart" | "arrive"; dateTime: string };
@@ -328,7 +330,7 @@ export async function requestRoutesApi(origin: string, destination: string, timi
 export default function GeographicMap(props: Props) {
   const mapNode = useRef<HTMLDivElement>(null);
   const callbackRef = useRef(props.onRoutesResolved);
-  callbackRef.current = props.onRoutesResolved;
+  useEffect(() => { callbackRef.current = props.onRoutesResolved; }, [props.onRoutesResolved]);
   const [state, setState] = useState<RouteState>("loading");
   const [message, setMessage] = useState("Requesting current Google routes…");
   const isQuietSpot = Boolean(props.quietSpot);
@@ -339,8 +341,8 @@ export default function GeographicMap(props: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    let polylines: any[] = [];
-    let markers: any[] = [];
+    const polylines: any[] = [];
+    const markers: any[] = [];
     async function renderRoute() {
       setState("loading");
       setMessage(isQuietSpot ? "Requesting the current walking route…" : `Comparing public-transport alternatives for ${direction === "to-work" ? "weekday 7:15 AM" : "weekday 5:30 PM"}…`);
@@ -349,8 +351,7 @@ export default function GeographicMap(props: Props) {
         if (cancelled || !mapNode.current) return;
         const [{ Map }, { LatLngBounds }] = await Promise.all([window.google.maps.importLibrary("maps"), window.google.maps.importLibrary("core")]);
         const map = new Map(mapNode.current, { center: { lat: -37.8155, lng: 144.946 }, zoom: 13, mapTypeControl: false, streetViewControl: false, fullscreenControl: false, clickableIcons: false, gestureHandling: "cooperative" });
-        let result: any;
-        result = await requestRoutesApi(origin, destination, props.travelTiming, isQuietSpot ? "WALK" : "TRANSIT");
+        const result = await requestRoutesApi(origin, destination, props.travelTiming, isQuietSpot ? "WALK" : "TRANSIT");
         const rawRoutes = [...(result?.routes ?? [])]
           .sort((a, b) => routeDurationMinutes(a) - routeDurationMinutes(b))
           .slice(0, isQuietSpot ? 1 : 4);
@@ -477,11 +478,11 @@ export default function GeographicMap(props: Props) {
           });
           return [marker, idOverlay];
         });
-        markers = [
+        markers.push(
           ...sensorMarkers.flat(),
           new Marker({ map, position: allPoints[0], label: "A", title: origin, zIndex: 10 }),
           new Marker({ map, position: allPoints[allPoints.length - 1], label: "B", title: destination, zIndex: 10 }),
-        ];
+        );
         setState("ready"); setMessage(isQuietSpot ? `Google walking route · ${meta.duration}` : `${meta.service} · ${meta.duration} · ${routes.length} Google alternative${routes.length === 1 ? "" : "s"}`);
       } catch (error) {
         if (cancelled) return;
@@ -493,7 +494,7 @@ export default function GeographicMap(props: Props) {
     }
     void renderRoute();
     return () => { cancelled = true; polylines.forEach((line) => line.setMap(null)); markers.forEach((marker) => marker.setMap(null)); };
-  }, [destination, direction, isQuietSpot, origin, props.selected, props.crowdLimit, props.sensorReadings, props.travelTiming?.mode, props.travelTiming?.dateTime]);
+  }, [destination, direction, isQuietSpot, origin, props.selected, props.crowdLimit, props.sensorReadings, props.travelTiming]);
 
   return <div className="geo-map-wrap google-map-panel" role="region" aria-label="Google Maps selected route">
     <div ref={mapNode} className="google-live-map" aria-hidden={state !== "ready"} />

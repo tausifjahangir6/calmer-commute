@@ -99,7 +99,14 @@ jobs:
       - name: Run Python dependency audit
         run: |
           mkdir -p artifacts
-          python -m pip_audit --fail-on high | tee artifacts/python-security-report.txt
+          python -m pip_audit --format json > artifacts/python-security-report.json || true
+          python - <<'PY'
+import json, sys
+with open('artifacts/python-security-report.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+if any(len(dep.get('vulns', [])) for dep in data.get('dependencies', [])):
+    print('Vulnerabilities found in Python dependencies.'); sys.exit(1)
+PY
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
