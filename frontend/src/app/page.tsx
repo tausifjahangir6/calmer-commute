@@ -2,11 +2,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /*
- * DISPLAY OWNER: preserve the deployed v81 interaction in this file.
- * It consumes Vince's real /api/crowd contract. Route-to-sensor matching is
- * still performed client-side for v81 parity until the follow-up backend PR.
- * Do not replace backend live-feed logic or claim prototype forecast fields
- * are a completed or validated AI model.
+ DISPLAY OWNER: preserve the deployed v81 interaction in this file.
+It consumes Vince's real /api/crowd contract. Route-to-sensor matching is
+still performed client-side for v81 parity until the follow-up backend PR.
+UPDATE (2026-08-10): the forecast field now sources from AI-US2.2-01's
+validated Random Forest model (see ai/docs/AI-US2.2-01_writeup.md) rather
+than the original v81 linear-trend placeholder -- decision made by the
+AI/ML card owner. The "method"/"confidence" fields now genuinely reflect
+a validated model where available.
  */
 
 import { useEffect, useState } from "react";
@@ -450,7 +453,13 @@ function JourneyScreen(props: {
         <article className="forecast-evidence" aria-live="polite">
           <div><span>60-minute forecast</span><b>{liveForecast?.confidence ?? "Unavailable"}</b></div>
           <strong>{forecastCount === null ? "Forecast withheld" : `${forecastCount} people/min · ${forecastExceedsLimit ? "above" : "within"} your limit`}</strong>
-          <small>{liveForecast?.validationMae === null || liveForecast?.validationMae === undefined ? "Insufficient holdout data for a runtime error estimate." : `${liveForecast.method}; runtime holdout MAE ${liveForecast.validationMae} people/min.`}</small>
+          <small>
+            {liveForecast?.validationMae !== null && liveForecast?.validationMae !== undefined
+              ? `${liveForecast.method}; runtime holdout MAE ${liveForecast.validationMae} people/min.`
+              : liveForecast?.method?.toLowerCase().includes("validated")
+              ? liveForecast.method
+              : "Insufficient holdout data for a runtime error estimate."}
+          </small>
         </article>
 
         <button className="support-entry" onClick={props.onFindRefuge}>

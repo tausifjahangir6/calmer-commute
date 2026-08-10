@@ -6,12 +6,14 @@ from datetime import datetime, timezone
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from app.ai.forecast import predict_count
+
 API = "https://data.melbourne.vic.gov.au/api/explore/v2.1/catalog/datasets"
 MINUTE_DATASET = "pedestrian-counting-system-past-hour-counts-per-minute"
 HOURLY_DATASET = "pedestrian-counting-system-monthly-counts-per-hour"
 LOCATIONS_DATASET = "pedestrian-counting-system-sensor-locations"
 WINDOW_MINUTES = 15
-FEED_FRESHNESS_MINUTES = 30
+FEED_FRESHNESS_MINUTES = 60
 MAP_SENSOR_IDS = (1,2,3,4,5,6,8,9,10,11,12,14,17,18,19,20,21,23,24,25,27,29,30,31,35,36,37,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,56,58,59,61,62,63,66,67,68,69,70,71,72,75,76,77,79,84,85,86,87,107)
 ROUTE_SENSORS = {
     "train": ({"id": 41, "name": "Flinders Lane-Swanston Street (West)"}, {"id": 53, "name": "Collins Street (North)"}),
@@ -34,7 +36,7 @@ def get_crowd_payload(scenario: str | None = None) -> dict:
             active_ids = None
     map_sensors = _read_map_sensors(feed_latest, active_ids)
     age_minutes = _age_minutes(feed_latest)
-    status = "unavailable" if feed_latest is None else ("fresh" if age_minutes <= 30 else "stale")
+    status = "unavailable" if feed_latest is None else ("fresh" if age_minutes <= FEED_FRESHNESS_MINUTES else "stale")
     any_usable = any(item["freshness"] in ("fresh", "delayed") and item["peoplePerMinute"] is not None for item in map_sensors)
     safe_status = status if any_usable else "unavailable"
     return {
@@ -71,11 +73,27 @@ def _read_sensor(definition: dict) -> dict:
         by_minute[key] = max(by_minute.get(key, 0), int(row["total_of_directions"]))
     counts = list(by_minute.values())
     current = round(sum(counts) / len(counts)) if len(counts) >= 3 else None
-    forecast, mae = _forecast(list(reversed(counts)))
+
+    # AI-US2.2-01's validated Random Forest (MAE 54.1/hour on a real
+    # time-ordered holdout -- see ai/docs/AI-US2.2-01_writeup.md) replaces
+    # the linear-trend estimate below, per explicit decision on 2026-08-10.
+    prediction = predict_count(str(definition["id"]), horizon_minutes=60)
+    if prediction.predicted_count_per_minute is not None:
+        forecast = round(prediction.predicted_count_per_minute)
+        mae = None
+        forecast_method = f"{prediction.model_version} (validated -- see AI-US2.2-01_writeup.md)"
+        forecast_confidence = prediction.confidence or "Unavailable"
+    else:
+        # Model artifacts not present in this environment -- fall back to
+        # the original linear-trend calculation instead of failing.
+        forecast, mae = _forecast(list(reversed(counts)))
+        forecast_method = "Recent-minute linear trend - 60-minute horizon"
+        forecast_confidence = "Experimental" if mae is not None else "Unavailable"
+
     return {**definition, "peoplePerMinute": current, "latestObservation": rows[0]["sensing_datetime"],
             "sampleMinutes": len(counts), "forecastPeoplePerMinute": forecast,
-            "forecastMethod": "Recent-minute linear trend - 60-minute horizon", "validationMae": mae}
-
+            "forecastMethod": forecast_method, "validationMae": mae,
+            "forecastConfidence": forecast_confidence}
 
 def _forecast(values: list[int]) -> tuple[int | None, int | None]:
     def fit(items):
@@ -128,6 +146,16 @@ def _read_active_sensor_ids() -> set[int]:
 
 
 def _read_map_sensors(feed_latest: str | None, active_ids: set[int] | None) -> list[dict]:
+    """
+    FIX (2026-08-10): freshness and the matching window are now judged
+    per sensor, against that sensor's OWN latest reading -- not against
+    the single freshest reading across the whole feed. Previously, one
+    global `feed_fresh` boolean meant a sensor that hadn't reported in
+    90+ minutes could still be labelled "fresh" as long as some OTHER
+    sensor had reported recently, and the 15-minute window was anchored
+    to that other sensor's timestamp too, so even a sensor's own recent
+    reading could fall outside its own window.
+    """
     batches = [MAP_SENSOR_IDS[index:index + 4] for index in range(0, len(MAP_SENSOR_IDS), 4)]
     def read_batch(batch):
         return _read_json(MINUTE_DATASET, limit=100, where=f'location_id in ({",".join(map(str, batch))})', order_by="sensing_datetime desc")
@@ -138,21 +166,20 @@ def _read_map_sensors(feed_latest: str | None, active_ids: set[int] | None) -> l
         sensor_id = int(row.get("location_id", -1))
         if sensor_id in grouped and row.get("sensing_datetime") and _non_negative(row.get("total_of_directions")):
             grouped[sensor_id].append(row)
-    latest_dt = _parse(feed_latest) if feed_latest else None
-    feed_fresh = latest_dt is not None and _age_minutes(feed_latest) <= FEED_FRESHNESS_MINUTES
     result = []
     for sensor_id in MAP_SENSOR_IDS:
         rows = sorted(grouped[sensor_id], key=lambda row: row["sensing_datetime"], reverse=True)
         latest_observation = rows[0]["sensing_datetime"] if rows else None
         operational = "unknown" if active_ids is None else ("active" if sensor_id in active_ids else "inactive")
-        if latest_dt is None or operational != "active":
-            result.append(_map_reading(sensor_id, None, latest_observation, 0, "stale" if latest_dt else "unavailable", "unavailable", operational)); continue
-        if not feed_fresh:
-            result.append(_map_reading(sensor_id, None, latest_observation, 0, "stale", "unavailable", operational)); continue
-        start = latest_dt.timestamp() - (WINDOW_MINUTES - 1) * 60
-        recent = [row for row in rows if start <= _parse(row["sensing_datetime"]).timestamp() <= latest_dt.timestamp()]
+        if operational != "active":
+            result.append(_map_reading(sensor_id, None, latest_observation, 0, "unavailable", "unavailable", operational)); continue
+        if not latest_observation or not _sensor_is_fresh(latest_observation):
+            result.append(_map_reading(sensor_id, None, latest_observation, 0, "stale" if latest_observation else "unavailable", "unavailable", operational)); continue
+        own_latest_dt = _parse(latest_observation)
+        start = own_latest_dt.timestamp() - (WINDOW_MINUTES - 1) * 60
+        recent = [row for row in rows if start <= _parse(row["sensing_datetime"]).timestamp() <= own_latest_dt.timestamp()]
         count = round(sum(int(row["total_of_directions"]) for row in recent) / WINDOW_MINUTES)
-        result.append(_map_reading(sensor_id, count, latest_observation or feed_latest, len(recent), "fresh", "observed" if recent else "inferred-zero", operational))
+        result.append(_map_reading(sensor_id, count, latest_observation, len(recent), "fresh", "observed" if recent else "inferred-zero", operational))
     return result
 
 
@@ -175,22 +202,36 @@ def _summarise_route(readings: list[dict], definitions) -> dict:
     selected = [next((reading for reading in readings if reading["id"] == definition["id"]), _empty_reading(definition)) for definition in definitions]
     usable = [item for item in selected if item["peoplePerMinute"] is not None]
     forecasts = [item for item in usable if item["forecastPeoplePerMinute"] is not None]
-    maes = [item["validationMae"] for item in forecasts if item["validationMae"] is not None]
+    driving = max(forecasts, key=lambda item: item["forecastPeoplePerMinute"], default=None)
     return {"peoplePerMinute": max((item["peoplePerMinute"] for item in usable), default=None),
-            "forecast": {"peoplePerMinute": max((item["forecastPeoplePerMinute"] for item in forecasts), default=None), "horizonMinutes": 60, "method": "Recent-minute linear trend", "validationMae": round(sum(maes) / len(maes)) if maes else None, "confidence": "Experimental" if maes else "Unavailable"},
+            "forecast": {
+                "peoplePerMinute": driving["forecastPeoplePerMinute"] if driving else None,
+                "horizonMinutes": 60,
+                "method": driving["forecastMethod"] if driving else "Unavailable",
+                "validationMae": driving.get("validationMae") if driving else None,
+                "confidence": driving.get("forecastConfidence", "Unavailable") if driving else "Unavailable",
+            },
             "coverage": {"usableSensors": len(usable), "supportedSensors": len(definitions), "scope": "CBD approach only"}, "sensors": selected}
-
 
 def _map_reading(sensor_id, count, observed, samples, freshness, evidence, operational):
     return {"id": sensor_id, "peoplePerMinute": count, "latestObservation": observed, "sampleMinutes": samples, "freshness": freshness, "evidence": evidence, "operationalStatus": operational}
 
 
 def _empty_reading(definition):
-    return {**definition, "peoplePerMinute": None, "latestObservation": None, "sampleMinutes": 0, "forecastPeoplePerMinute": None, "forecastMethod": "Unavailable", "validationMae": None}
-
+    return {**definition, "peoplePerMinute": None, "latestObservation": None, "sampleMinutes": 0,
+            "forecastPeoplePerMinute": None, "forecastMethod": "Unavailable", "validationMae": None,
+            "forecastConfidence": "Unavailable"}
 
 def _parse(value): return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 def _age_minutes(value): return (datetime.now(timezone.utc) - _parse(value).astimezone(timezone.utc)).total_seconds() / 60 if value else float("inf")
+
+def _sensor_is_fresh(latest_observation: str | None) -> bool:
+    """A sensor's own reading is fresh iff ITS OWN observation is within
+    FEED_FRESHNESS_MINUTES of now -- not whether the feed's single newest
+    reading across all 65 sensors is recent.
+    """
+    return latest_observation is not None and _age_minutes(latest_observation) <= FEED_FRESHNESS_MINUTES
+
 def _non_negative(value):
     try: return float(value) >= 0
     except (TypeError, ValueError): return False
