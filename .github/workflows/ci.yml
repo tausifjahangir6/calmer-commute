@@ -33,9 +33,11 @@ jobs:
 
       - name: Run backend unit and integration tests
         working-directory: backend
+        env:
+          PYTHONPATH: .
         run: |
           mkdir -p ../artifacts
-          pytest tests --junitxml=../artifacts/backend-pytest.xml
+          python -m pytest tests --junitxml=../artifacts/backend-pytest.xml
 
       - name: Upload backend test report
         uses: actions/upload-artifact@v4
