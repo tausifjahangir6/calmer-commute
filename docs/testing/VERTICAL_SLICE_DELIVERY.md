@@ -112,3 +112,14 @@ Use this section to record mentor feedback:
 - Result:
 - Follow-up actions:
 - Outstanding limitations:
+
+## 7. Release and Quality Evidence
+
+The release gate for this vertical slice is supported by the following documented evidence:
+
+- `docs/testing/ACCEPTANCE_TRACEABILITY_MATRIX.md` — links acceptance criteria to tests and review evidence.
+- `docs/testing/RELEASE_CRITERIA.md` — documents mandatory checks, defect blocking rules, and release approval requirements.
+- `.github/workflows/ci.yml` — CI workflow for backend tests, frontend quality/build checks, and dependency security scans.
+- GitHub Actions artifacts from CI runs, including `backend-test-report`, `frontend-ci-reports`, and `security-reports`.
+
+This documentation establishes repeatable checks and an explicit release gate for repository changes.

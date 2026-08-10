@@ -83,4 +83,11 @@ This file covers:
 - end-to-end test evidence
 - demo screenshots / recording notes
 - mentor review record
+- release gate and quality criteria documentation
+
+For traceability and release readiness, also see:
+
+- `docs/testing/ACCEPTANCE_TRACEABILITY_MATRIX.md`
+- `docs/testing/RELEASE_CRITERIA.md`
+- `.github/workflows/ci.yml`
 

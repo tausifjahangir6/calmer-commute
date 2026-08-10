@@ -1,0 +1,124 @@
+name: Continuous integration
+
+on:
+  push:
+    branches:
+      - main
+      - development
+      - integration
+  pull_request:
+    branches:
+      - main
+      - development
+      - integration
+  workflow_dispatch:
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements-dev.txt
+
+      - name: Run backend unit and integration tests
+        run: |
+          mkdir -p artifacts
+          pytest backend/tests --junitxml=artifacts/backend-pytest.xml
+
+      - name: Upload backend test report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-report
+          path: artifacts/backend-pytest.xml
+
+  frontend-check:
+    name: Frontend quality and build
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_MAPS_API_KEY: test-ci-key
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run frontend lint
+        run: |
+          mkdir -p artifacts
+          cd frontend
+          npm run lint | tee ../artifacts/frontend-lint.txt
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build | tee ../artifacts/frontend-build.txt
+
+      - name: Upload frontend CI reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-ci-reports
+          path: artifacts/frontend-*.txt
+
+  security-scan:
+    name: Dependency and security checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit
+
+      - name: Run Python dependency audit
+        run: |
+          mkdir -p artifacts
+          python -m pip_audit --fail-on high | tee artifacts/python-security-report.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run frontend dependency audit
+        run: |
+          cd frontend
+          npm audit --audit-level=high | tee ../artifacts/frontend-security-report.txt
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: artifacts/*security-report.txt
