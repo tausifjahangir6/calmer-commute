@@ -11,6 +11,13 @@ type Props = {
   onChange: (value: string) => void;
 };
 
+type PlaceAutocompleteElement = HTMLElement & {
+  value: string;
+  addEventListener(type: "gmp-select", listener: (event: Event) => void): void;
+  removeEventListener(type: "gmp-select", listener: (event: Event) => void): void;
+};
+
+/* eslint-disable @typescript-eslint/no-namespace */
 declare global {
   namespace JSX {
     interface IntrinsicElements {
@@ -18,6 +25,7 @@ declare global {
     }
   }
 }
+/* eslint-enable @typescript-eslint/no-namespace */
 
 export default function PlaceSearch({ ariaLabel, value, onChange }: Props) {
   const host = useRef<HTMLDivElement>(null);
@@ -27,8 +35,9 @@ export default function PlaceSearch({ ariaLabel, value, onChange }: Props) {
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   useEffect(() => {
+    const hostNode = host.current;
     let cancelled = false;
-    let autocomplete: any;
+    let autocomplete: PlaceAutocompleteElement | null = null;
     let listener: ((event: Event) => void) | undefined;
 
     async function mountAutocomplete() {
@@ -38,27 +47,31 @@ export default function PlaceSearch({ ariaLabel, value, onChange }: Props) {
         if (cancelled || !host.current) return;
 
         const PlaceAutocompleteElement = places.PlaceAutocompleteElement;
-        autocomplete = new PlaceAutocompleteElement({
+        const autocompleteInstance = new PlaceAutocompleteElement({
           includedRegionCodes: ["au"],
           locationBias: {
             center: { lat: -37.8136, lng: 144.9631 },
             radius: 50000,
           },
         });
-        autocomplete.setAttribute("aria-label", ariaLabel);
-        autocomplete.setAttribute("placeholder", "Search a Melbourne address");
-        autocomplete.value = value;
+        autocomplete = autocompleteInstance;
+        autocompleteInstance.setAttribute("aria-label", ariaLabel);
+        autocompleteInstance.setAttribute("placeholder", "Search a Melbourne address");
 
         listener = async (event: Event) => {
-          const prediction = (event as any).placePrediction;
+          const prediction = (event as unknown as { placePrediction?: { toPlace: () => unknown } }).placePrediction;
           if (!prediction) return;
-          const place = prediction.toPlace();
+          const place = prediction.toPlace() as {
+            fetchFields: (options: { fields: string[] }) => Promise<void>;
+            formattedAddress?: string;
+            displayName?: string;
+          };
           await place.fetchFields({ fields: ["formattedAddress", "displayName", "location"] });
           const selected = place.formattedAddress || place.displayName;
           if (selected) onChangeRef.current(selected);
         };
-        autocomplete.addEventListener("gmp-select", listener);
-        host.current.replaceChildren(autocomplete);
+        autocompleteInstance.addEventListener("gmp-select", listener);
+        host.current.replaceChildren(autocompleteInstance);
         setStatus("ready");
       } catch {
         if (!cancelled) setStatus("fallback");
@@ -69,13 +82,16 @@ export default function PlaceSearch({ ariaLabel, value, onChange }: Props) {
     return () => {
       cancelled = true;
       if (autocomplete && listener) autocomplete.removeEventListener("gmp-select", listener);
-      if (host.current) host.current.replaceChildren();
+      if (hostNode) hostNode.replaceChildren();
     };
   }, [ariaLabel]);
 
   useEffect(() => {
-    const element = host.current?.firstElementChild as any;
-    if (status === "ready" && element && element.value !== value) element.value = value;
+    const hostNode = host.current;
+    const element = hostNode?.firstElementChild as PlaceAutocompleteElement | null;
+    if (status === "ready" && element && element.value !== value) {
+      element.setAttribute("value", value);
+    }
   }, [status, value]);
 
   if (status === "fallback") {

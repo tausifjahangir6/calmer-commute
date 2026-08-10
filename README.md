@@ -71,3 +71,26 @@ The project uses selected City of Melbourne Open Data, including:
 4. Receive a next-hour warning
 5. Reroute or locate a candidate refuge
 
+## Delivery Evidence
+
+For the onboarding vertical slice, the supporting evidence and handoff notes are documented in [docs/testing/VERTICAL_SLICE_DELIVERY.md](docs/testing/VERTICAL_SLICE_DELIVERY.md).
+
+This file covers:
+
+- deployment/build evidence
+- repository version and branch
+- setup instructions
+- end-to-end test evidence
+- demo screenshots / recording notes
+- mentor review record
+- release gate and quality criteria documentation
+
+For traceability and release readiness, also see:
+
+- `docs/testing/ACCEPTANCE_TRACEABILITY_MATRIX.md`
+- `docs/testing/RELEASE_CRITERIA.md`
+- `docs/testing/VERTICAL_SLICE_SECURITY_ASSESSMENT.md`
+- `docs/testing/PRIVACY_RETENTION.md`
+- `docs/testing/security-scans/`
+- `.github/workflows/ci.yml`
+

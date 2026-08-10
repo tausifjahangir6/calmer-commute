@@ -1,0 +1,146 @@
+name: Continuous integration
+
+on:
+  push:
+    branches:
+      - main
+      - development
+      - integration
+  pull_request:
+    branches:
+      - main
+      - development
+      - integration
+  workflow_dispatch:
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements-dev.txt
+
+      - name: Run backend unit and integration tests
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: |
+          mkdir -p ../artifacts
+          python -m pytest tests --junitxml=../artifacts/backend-pytest.xml
+
+      - name: Upload backend test report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-report
+          path: artifacts/backend-pytest.xml
+
+  frontend-check:
+    name: Frontend quality and build
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_MAPS_API_KEY: test-ci-key
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run frontend lint
+        run: |
+          mkdir -p artifacts
+          cd frontend
+          npm run lint | tee ../artifacts/frontend-lint.txt
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build | tee ../artifacts/frontend-build.txt
+
+      - name: Upload frontend CI reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-ci-reports
+          path: artifacts/frontend-*.txt
+
+  security-scan:
+    name: Dependency and security checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install security tools and backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit
+          pip install -r backend/requirements.txt
+
+      - name: Run Python dependency audit
+        run: |
+          mkdir -p artifacts
+          python -m pip_audit -r backend/requirements.txt --format json --output artifacts/python-security-report.json
+          python - <<'PY'
+          import json, sys
+          with open('artifacts/python-security-report.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          dependencies = data.get('dependencies', data if isinstance(data, list) else [])
+          vulns = []
+          for dep in dependencies:
+              if isinstance(dep, dict):
+                  vulns.extend(dep.get('vulns', []) or [])
+          if vulns:
+              print(f'Vulnerabilities found in Python dependencies: {len(vulns)}')
+              sys.exit(1)
+          print('No vulnerabilities found in Python dependencies.')
+          PY
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run frontend dependency audit
+        run: |
+          mkdir -p artifacts
+          cd frontend
+          npm audit --audit-level=high | tee ../artifacts/frontend-security-report.txt
+
+      - name: Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            artifacts/python-security-report.json
+            artifacts/frontend-security-report.txt
+          if-no-files-found: warn
+          retention-days: 30

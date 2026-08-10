@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /*
  DISPLAY OWNER: preserve the deployed v81 interaction in this file.
@@ -47,15 +48,19 @@ const WORK = "Growth Factory, 3/292 Flinders St, Melbourne VIC 3000";
 // effect and removes/recreates the route sensor overlays.
 const EMPTY_SENSORS: CrowdData["mapSensors"] = [];
 
+// Stable timing object — a new `{ mode: "now" }` each render retriggered the
+// map effect, which called setDynamicRoutes and looped "Comparing public-transport…".
+const DEFAULT_TRAVEL_TIMING: TravelTiming = { mode: "now", dateTime: "" };
+
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("plan");
   const [selectedRoute, setSelectedRoute] = useState<RouteId>("route-0");
   const [homeAddress, setHomeAddress] = useState(HOME);
   const [workAddress, setWorkAddress] = useState(WORK);
+  const [crowdLimit, setCrowdLimit] = useState(12);
   // The prototype opens in its deterministic DoD replay so the supported
   // route sensors are present on first load. Users can untick DoD check to
   // switch to the near-real-time feed.
-  const [crowdLimit, setCrowdLimit] = useState(12);
   const [dataState, setDataState] = useState<DataState>("loading");
   const [crowdData, setCrowdData] = useState<CrowdData | null>(null);
   const [alertVisible, setAlertVisible] = useState(true);
@@ -63,9 +68,19 @@ export default function Home() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [dynamicRoutes, setDynamicRoutes] = useState<DynamicRoute[]>([]);
   const [testScenario, setTestScenario] = useState(true);
-  const travelTiming: TravelTiming = { mode: "now", dateTime: "" };
+  const travelTiming = DEFAULT_TRAVEL_TIMING;
 
-  useEffect(() => { setDynamicRoutes([]); setSelectedRoute("route-0"); }, [homeAddress, workAddress]);
+  function handleHomeAddress(value: string) {
+    setHomeAddress(value);
+    setDynamicRoutes([]);
+    setSelectedRoute("route-0");
+  }
+
+  function handleWorkAddress(value: string) {
+    setWorkAddress(value);
+    setDynamicRoutes([]);
+    setSelectedRoute("route-0");
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -98,8 +113,8 @@ export default function Home() {
           <PlanScreen
             homeAddress={homeAddress}
             workAddress={workAddress}
-            onHomeAddress={setHomeAddress}
-            onWorkAddress={setWorkAddress}
+            onHomeAddress={handleHomeAddress}
+            onWorkAddress={handleWorkAddress}
             onContinue={() => navigate("routes")}
             testScenario={testScenario}
             onTestScenario={(value) => { setTestScenario(value); setCrowdLimit(value ? 12 : 25); }}
@@ -288,9 +303,17 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
   const hotspotMeta = displayedHotspotRoute?.route.nearbySensors.find((sensor) => sensor.id === displayedHotspotRoute.hotspotId);
   const verifiedAvoidance = Boolean(avoidedRoute && recommended && displayedHotspotRoute?.hotspotId === avoidedRoute.hotspotId);
   const noLowRoute = assessed.length > 0 && assessed.every((route) => route.crowdRisk === "High");
+  const assessedRouteIds = assessed.map((route) => route.id).join(",");
   useEffect(() => {
-    if (!assessed.some((route) => route.id === selected)) onSelect(recommended?.id ?? fastest?.id ?? "route-0");
-  }, [assessed.length, recommended?.id, fastest?.id, selected, onSelect]);
+    if (!assessedRouteIds) return;
+    const ids = assessedRouteIds.split(",");
+    if (!ids.includes(selected)) onSelect(recommended?.id ?? fastest?.id ?? ids[0] ?? "route-0");
+  }, [assessedRouteIds, recommended?.id, fastest?.id, selected, onSelect]);
+  // Follow the Low-crowd recommendation when the threshold changes, without
+  // overriding a manual route pick while the limit stays the same.
+  useEffect(() => {
+    if (recommended?.id) onSelect(recommended.id);
+  }, [crowdLimit, recommended?.id, onSelect]);
   return (
     <section className={`app-screen routes-view ${noLowRoute ? "has-no-low-route" : ""}`} aria-label="Select your path">
       <ScreenHeader title="Sensory-aware journey options" subtitle="Calmer Commute recommends sensory aware routes using supported pedestrian evidence and your crowd limit." back={onBack} />
@@ -547,6 +570,7 @@ function formatObservation(value: string | null) {
   }).format(date)}`;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function timingLabel(timing: TravelTiming) {
   if (timing.mode === "now") return "Leave now · current Google estimate";
   if (!timing.dateTime) return timing.mode === "depart" ? "Choose a departure time" : "Choose an arrival time";
@@ -556,6 +580,7 @@ function timingLabel(timing: TravelTiming) {
   return `${timing.mode === "depart" ? "Depart" : "Arrive"} · ${formatted}`;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function coverageLabel(route: RouteReading | undefined) {
   if (!route) return "No supported reading";
   return `${route.coverage.usableSensors} of ${route.coverage.supportedSensors} supported sensors · ${route.coverage.scope}`;
