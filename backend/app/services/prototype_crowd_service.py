@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from app.ai.forecast import predict_count
+
 API = "https://data.melbourne.vic.gov.au/api/explore/v2.1/catalog/datasets"
 MINUTE_DATASET = "pedestrian-counting-system-past-hour-counts-per-minute"
 HOURLY_DATASET = "pedestrian-counting-system-monthly-counts-per-hour"
@@ -71,11 +73,27 @@ def _read_sensor(definition: dict) -> dict:
         by_minute[key] = max(by_minute.get(key, 0), int(row["total_of_directions"]))
     counts = list(by_minute.values())
     current = round(sum(counts) / len(counts)) if len(counts) >= 3 else None
-    forecast, mae = _forecast(list(reversed(counts)))
+
+    # AI-US2.2-01's validated Random Forest (MAE 54.1/hour on a real
+    # time-ordered holdout -- see ai/docs/AI-US2.2-01_writeup.md) replaces
+    # the linear-trend estimate below, per explicit decision on 2026-08-10.
+    prediction = predict_count(str(definition["id"]), horizon_minutes=60)
+    if prediction.predicted_count_per_minute is not None:
+        forecast = round(prediction.predicted_count_per_minute)
+        mae = None
+        forecast_method = f"{prediction.model_version} (validated -- see AI-US2.2-01_writeup.md)"
+        forecast_confidence = prediction.confidence or "Unavailable"
+    else:
+        # Model artifacts not present in this environment -- fall back to
+        # the original linear-trend calculation instead of failing.
+        forecast, mae = _forecast(list(reversed(counts)))
+        forecast_method = "Recent-minute linear trend - 60-minute horizon"
+        forecast_confidence = "Experimental" if mae is not None else "Unavailable"
+
     return {**definition, "peoplePerMinute": current, "latestObservation": rows[0]["sensing_datetime"],
             "sampleMinutes": len(counts), "forecastPeoplePerMinute": forecast,
-            "forecastMethod": "Recent-minute linear trend - 60-minute horizon", "validationMae": mae}
-
+            "forecastMethod": forecast_method, "validationMae": mae,
+            "forecastConfidence": forecast_confidence}
 
 def _forecast(values: list[int]) -> tuple[int | None, int | None]:
     def fit(items):
@@ -184,19 +202,25 @@ def _summarise_route(readings: list[dict], definitions) -> dict:
     selected = [next((reading for reading in readings if reading["id"] == definition["id"]), _empty_reading(definition)) for definition in definitions]
     usable = [item for item in selected if item["peoplePerMinute"] is not None]
     forecasts = [item for item in usable if item["forecastPeoplePerMinute"] is not None]
-    maes = [item["validationMae"] for item in forecasts if item["validationMae"] is not None]
+    driving = max(forecasts, key=lambda item: item["forecastPeoplePerMinute"], default=None)
     return {"peoplePerMinute": max((item["peoplePerMinute"] for item in usable), default=None),
-            "forecast": {"peoplePerMinute": max((item["forecastPeoplePerMinute"] for item in forecasts), default=None), "horizonMinutes": 60, "method": "Recent-minute linear trend", "validationMae": round(sum(maes) / len(maes)) if maes else None, "confidence": "Experimental" if maes else "Unavailable"},
+            "forecast": {
+                "peoplePerMinute": driving["forecastPeoplePerMinute"] if driving else None,
+                "horizonMinutes": 60,
+                "method": driving["forecastMethod"] if driving else "Unavailable",
+                "validationMae": driving.get("validationMae") if driving else None,
+                "confidence": driving.get("forecastConfidence", "Unavailable") if driving else "Unavailable",
+            },
             "coverage": {"usableSensors": len(usable), "supportedSensors": len(definitions), "scope": "CBD approach only"}, "sensors": selected}
-
 
 def _map_reading(sensor_id, count, observed, samples, freshness, evidence, operational):
     return {"id": sensor_id, "peoplePerMinute": count, "latestObservation": observed, "sampleMinutes": samples, "freshness": freshness, "evidence": evidence, "operationalStatus": operational}
 
 
 def _empty_reading(definition):
-    return {**definition, "peoplePerMinute": None, "latestObservation": None, "sampleMinutes": 0, "forecastPeoplePerMinute": None, "forecastMethod": "Unavailable", "validationMae": None}
-
+    return {**definition, "peoplePerMinute": None, "latestObservation": None, "sampleMinutes": 0,
+            "forecastPeoplePerMinute": None, "forecastMethod": "Unavailable", "validationMae": None,
+            "forecastConfidence": "Unavailable"}
 
 def _parse(value): return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 def _age_minutes(value): return (datetime.now(timezone.utc) - _parse(value).astimezone(timezone.utc)).total_seconds() / 60 if value else float("inf")
