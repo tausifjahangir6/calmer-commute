@@ -1,5 +1,4 @@
 "use client";
-import "leaflet/dist/leaflet.css";
 /*
  * DISPLAY OWNER: this is the v81 map/overlay implementation.
  * Keep selected-route rendering, sensor markers, 75 m direct / 150 m proxy
