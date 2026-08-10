@@ -91,21 +91,29 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install security tools
+      - name: Install security tools and backend dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pip-audit
+          pip install -r backend/requirements.txt
 
       - name: Run Python dependency audit
         run: |
           mkdir -p artifacts
-          python -m pip_audit --format json > artifacts/python-security-report.json || true
+          python -m pip_audit -r backend/requirements.txt --format json --output artifacts/python-security-report.json
           python - <<'PY'
-            import json, sys
-            with open('artifacts/python-security-report.json', 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            if any(len(dep.get('vulns', [])) for dep in data.get('dependencies', [])):
-                print('Vulnerabilities found in Python dependencies.'); sys.exit(1)
+          import json, sys
+          with open('artifacts/python-security-report.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          dependencies = data.get('dependencies', data if isinstance(data, list) else [])
+          vulns = []
+          for dep in dependencies:
+              if isinstance(dep, dict):
+                  vulns.extend(dep.get('vulns', []) or [])
+          if vulns:
+              print(f'Vulnerabilities found in Python dependencies: {len(vulns)}')
+              sys.exit(1)
+          print('No vulnerabilities found in Python dependencies.')
           PY
 
       - name: Set up Node.js
@@ -113,6 +121,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
         run: |
@@ -121,11 +130,17 @@ jobs:
 
       - name: Run frontend dependency audit
         run: |
+          mkdir -p artifacts
           cd frontend
           npm audit --audit-level=high | tee ../artifacts/frontend-security-report.txt
 
       - name: Upload security reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: security-reports
-          path: artifacts/*security-report.txt
+          path: |
+            artifacts/python-security-report.json
+            artifacts/frontend-security-report.txt
+          if-no-files-found: warn
+          retention-days: 30

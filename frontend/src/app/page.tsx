@@ -45,6 +45,10 @@ const WORK = "Growth Factory, 3/292 Flinders St, Melbourne VIC 3000";
 // effect and removes/recreates the route sensor overlays.
 const EMPTY_SENSORS: CrowdData["mapSensors"] = [];
 
+// Stable timing object — a new `{ mode: "now" }` each render retriggered the
+// map effect, which called setDynamicRoutes and looped "Comparing public-transport…".
+const DEFAULT_TRAVEL_TIMING: TravelTiming = { mode: "now", dateTime: "" };
+
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("plan");
   const [selectedRoute, setSelectedRoute] = useState<RouteId>("route-0");
@@ -61,7 +65,7 @@ export default function Home() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [dynamicRoutes, setDynamicRoutes] = useState<DynamicRoute[]>([]);
   const [testScenario, setTestScenario] = useState(true);
-  const travelTiming: TravelTiming = { mode: "now", dateTime: "" };
+  const travelTiming = DEFAULT_TRAVEL_TIMING;
 
   function handleHomeAddress(value: string) {
     setHomeAddress(value);
@@ -296,9 +300,17 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
   const hotspotMeta = displayedHotspotRoute?.route.nearbySensors.find((sensor) => sensor.id === displayedHotspotRoute.hotspotId);
   const verifiedAvoidance = Boolean(avoidedRoute && recommended && displayedHotspotRoute?.hotspotId === avoidedRoute.hotspotId);
   const noLowRoute = assessed.length > 0 && assessed.every((route) => route.crowdRisk === "High");
+  const assessedRouteIds = assessed.map((route) => route.id).join(",");
   useEffect(() => {
-    if (!assessed.some((route) => route.id === selected)) onSelect(recommended?.id ?? fastest?.id ?? "route-0");
-  }, [assessed, recommended?.id, fastest?.id, selected, onSelect]);
+    if (!assessedRouteIds) return;
+    const ids = assessedRouteIds.split(",");
+    if (!ids.includes(selected)) onSelect(recommended?.id ?? fastest?.id ?? ids[0] ?? "route-0");
+  }, [assessedRouteIds, recommended?.id, fastest?.id, selected, onSelect]);
+  // Follow the Low-crowd recommendation when the threshold changes, without
+  // overriding a manual route pick while the limit stays the same.
+  useEffect(() => {
+    if (recommended?.id) onSelect(recommended.id);
+  }, [crowdLimit, recommended?.id, onSelect]);
   return (
     <section className={`app-screen routes-view ${noLowRoute ? "has-no-low-route" : ""}`} aria-label="Select your path">
       <ScreenHeader title="Sensory-aware journey options" subtitle="Calmer Commute recommends sensory aware routes using supported pedestrian evidence and your crowd limit." back={onBack} />

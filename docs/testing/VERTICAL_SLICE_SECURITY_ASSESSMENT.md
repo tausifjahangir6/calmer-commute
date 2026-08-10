@@ -26,9 +26,10 @@ It ties the current implementation to security and failure controls, automated s
 - [x] Frontend continues to render with a fallback search input when Google Maps autocomplete is unavailable.
 
 ### 2.4 Privacy and retention controls
-- [x] User journey preferences are handled as on-device input rather than permanently stored in committed source.
-- [x] No explicit long-term retention policy is implemented in frontend code.
-- [x] Credentials and provider keys are kept server-side in backend configuration.
+- [x] Documented retention rule: journey preferences and journey information are session-only (browser memory), not persisted and not uploaded as personal profile data. See `docs/testing/PRIVACY_RETENTION.md`.
+- [x] User journey preferences are handled as on-device React state rather than permanent storage.
+- [x] No long-term preference profile, journey history, or account store is implemented in the vertical slice.
+- [x] Credentials and provider keys are kept server-side in backend / environment configuration.
 
 ## 3. Threat and Failure-Mode Assessment
 
@@ -40,7 +41,8 @@ It ties the current implementation to security and failure controls, automated s
 | Malformed or missing request inputs | Incorrect classification, crash | Request validation in `backend/app/routes.py` | `backend/tests/test_refuges.py`, `backend/tests/test_predictions.py`, `backend/tests/test_routes.py` |
 | Stale or unavailable sensor data | Unsupported or misleading recommendation | Data freshness scoring in `backend/app/services/prototype_crowd_service.py`, `backend/app/services/route_scoring_service.py` | `backend/tests/test_route_scoring.py`, `backend/tests/test_crowd_freshness.py` |
 | External API outage / Google Maps failure | Broken route search, no route candidates | Fallback route failure handling and frontend fallback input | `frontend/src/app/GeographicMap.tsx`, `frontend/src/app/PlaceSearch.tsx` |
-| Dependency vulnerabilities | Supply-chain compromise | `pip-audit` and `npm audit` in CI | `.github/workflows/ci.yml` |
+| Dependency vulnerabilities | Supply-chain compromise | `pip-audit` and `npm audit` in CI, retained scan artifacts | `.github/workflows/ci.yml`, `docs/testing/security-scans/` |
+| Unintended retention of journey preferences | Privacy over-collection | Session-only retention rule | `docs/testing/PRIVACY_RETENTION.md` |
 
 ### 3.2 Failure-mode categories
 
@@ -55,12 +57,18 @@ It ties the current implementation to security and failure controls, automated s
 ### 4.1 CI scan coverage
 - `backend-tests` — installs Python dependencies and runs `pytest backend/tests --junitxml=artifacts/backend-pytest.xml`.
 - `frontend-check` — installs Node dependencies, runs `npm run lint`, and builds the frontend.
-- `security-scan` — installs `pip-audit`, runs Python dependency audit in JSON mode, and runs `npm audit --audit-level=high`.
+- `security-scan` — installs backend requirements, runs `pip-audit -r backend/requirements.txt` to JSON, runs `npm audit --audit-level=high`, and uploads both reports as the `security-reports` artifact (`if: always()`, 30-day retention).
 
 ### 4.2 Scan evidence
-- `backend-test-report` artifact contains pytest results.
-- `frontend-ci-reports` artifact contains lint and build logs.
-- `security-reports` artifact contains Python and frontend dependency scan outputs.
+- Repository baseline (10 August 2026):
+  - `docs/testing/security-scans/python-security-report.json` — `pip-audit` result: no known vulnerabilities.
+  - `docs/testing/security-scans/frontend-security-report.txt` — `npm audit --audit-level=high` result: `found 0 vulnerabilities`.
+  - Index: `docs/testing/security-scans/README.md`.
+- CI retention:
+  - GitHub Actions job: `security-scan` in `.github/workflows/ci.yml`.
+  - Artifact name: `security-reports`.
+  - Contents: `python-security-report.json` and `frontend-security-report.txt`.
+  - Retrieval: GitHub → Actions → Continuous integration → successful run → Artifacts → `security-reports`.
 
 ## 5. Failure-Handling Tests
 
@@ -79,27 +87,32 @@ It ties the current implementation to security and failure controls, automated s
 
 ### 6.1 Known fixes completed
 - Fixed `frontend/src/app/GeographicMap.tsx` build-time TypeScript issue and safe marker handling.
-- Verified no high severity dependency issues are committed against current install state via CI scan definitions.
 - Confirmed `backend/.env.example` is placeholder-only and `.env` files are ignored.
+- Fixed CI `security-reports` upload so `pip-audit` JSON is retained alongside the npm audit text report.
+- Documented the session-only privacy retention rule in `docs/testing/PRIVACY_RETENTION.md`.
 
 ### 6.2 Retest evidence
 - Local frontend build: `cd frontend && npm run build` succeeded.
 - Local lint: `cd frontend && npm run lint` succeeded.
-- Existing backend tests and CI workflow coverage are referenced, and CI artifacts are configured for evidence retention.
+- Local dependency retest (10 August 2026):
+  - `pip-audit -r backend/requirements.txt` → no known vulnerabilities.
+  - `npm audit --audit-level=high` → `found 0 vulnerabilities`.
+- CI workflow now uploads both Python and frontend security reports on every `security-scan` run, including failed runs (`if: always()`), for completion evidence.
 
 ## 7. Traceability
 
 | Evidence type | Location | Notes |
 |---|---|---|
-| Threat/failure register | `docs/testing/VERTICAL_SLICE_SECURITY_ASSESSMENT.md` | New dedicated assessment document |
+| Threat/failure register | `docs/testing/VERTICAL_SLICE_SECURITY_ASSESSMENT.md` | This assessment document |
+| Privacy retention rule | `docs/testing/PRIVACY_RETENTION.md` | Session-only journey preference rule |
+| Local scan baseline | `docs/testing/security-scans/` | Captured `pip-audit` + `npm audit` outputs |
 | CI workflow | `.github/workflows/ci.yml` | Backend tests, frontend checks, dependency scans |
+| CI scan artifact | GitHub Actions `security-reports` | JSON + text reports, 30-day retention |
 | Release criteria | `docs/testing/RELEASE_CRITERIA.md` | Mandatory release gate and defect severity rules |
 | Traceability matrix | `docs/testing/ACCEPTANCE_TRACEABILITY_MATRIX.md` | Maps acceptance to tests and documentation |
-| Security scan artifacts | CI artifact upload steps | `backend-test-report`, `frontend-ci-reports`, `security-reports` |
 
 ## 8. Recommended next actions
 
 1. Add explicit frontend unit tests for malformed autocomplete and route-fallback behavior.
-2. Extend CI to capture `pip-audit` JSON results as an artifact in addition to stdout.
-3. Add a documented retention rule for user preferences and journey information if permanent storage is introduced.
-4. Add failure-mode test cases for Google Maps outage and malformed routing API responses.
+2. Add failure-mode test cases for Google Maps outage and malformed routing API responses.
+3. After the next push to `integration`, attach the GitHub Actions run URL for the green `security-scan` job to the parent card as live CI evidence.

@@ -89,5 +89,8 @@ For traceability and release readiness, also see:
 
 - `docs/testing/ACCEPTANCE_TRACEABILITY_MATRIX.md`
 - `docs/testing/RELEASE_CRITERIA.md`
+- `docs/testing/VERTICAL_SLICE_SECURITY_ASSESSMENT.md`
+- `docs/testing/PRIVACY_RETENTION.md`
+- `docs/testing/security-scans/`
 - `.github/workflows/ci.yml`
 

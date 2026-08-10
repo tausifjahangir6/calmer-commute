@@ -35,13 +35,38 @@ type MapSensorReading = { id: number; peoplePerMinute: number | null; latestObse
 type Props = { trainCount: number | null; tramCount: number | null; trainRisk: Risk; tramRisk: Risk; selected: RouteId; refuge: boolean; quietSpot?: boolean; quietOrigin?: string; quietDestination?: string; crowdLimit?: number; sensorReadings?: MapSensorReading[]; onSelect: (route: RouteId) => void; onRoutesResolved?: (routes: DynamicRoute[]) => void; origin?: string; destination?: string; journeyDirection?: "to-work" | "home"; travelTiming?: TravelTiming; };
 type RouteState = "loading" | "ready" | "not-found" | "unconfigured" | "error";
 
-declare global { interface Window { google?: any; __calmerCommuteMapsPromise?: Promise<void>; } }
+declare global {
+  interface Window {
+    google?: any;
+    __calmerCommuteMapsPromise?: Promise<void>;
+    __calmerCommuteMapsApiKey?: string;
+    __calmerCommuteMapsApiKeyPromise?: Promise<string>;
+  }
+}
 
 const HOME = "903/8 Pearl River Road, Docklands VIC 3008, Australia";
 const WORK = "Growth Factory, 3/292 Flinders Street, Melbourne VIC 3000, Australia";
 const CITY_LIBRARY = "City Library, 253 Flinders Lane, Melbourne VIC 3000, Australia";
 
 export type SensorLocation = { id: number; name: string; lat: number; lng: number };
+
+async function getMapsApiKey() {
+  if (window.__calmerCommuteMapsApiKey) return window.__calmerCommuteMapsApiKey;
+  if (!window.__calmerCommuteMapsApiKeyPromise) {
+    window.__calmerCommuteMapsApiKeyPromise = (async () => {
+      const response = await fetch("/api/maps-config", { cache: "no-store" });
+      if (!response.ok) throw new Error("MAPS_NOT_CONFIGURED");
+      const { apiKey } = await response.json() as { apiKey?: string };
+      if (!apiKey) throw new Error("MAPS_NOT_CONFIGURED");
+      window.__calmerCommuteMapsApiKey = apiKey;
+      return apiKey;
+    })().catch((error) => {
+      window.__calmerCommuteMapsApiKeyPromise = undefined;
+      throw error;
+    });
+  }
+  return window.__calmerCommuteMapsApiKeyPromise;
+}
 
 // All 65 coordinate rows from pivoted_cleaned_20260808.csv.
 export const SENSOR_LOCATIONS: SensorLocation[] = `1|Bourke Street Mall (North)|-37.813494|144.965153
@@ -124,20 +149,23 @@ export async function loadGoogleMaps() {
   if (window.google?.maps?.importLibrary) return;
   if (window.__calmerCommuteMapsPromise) return window.__calmerCommuteMapsPromise;
   window.__calmerCommuteMapsPromise = (async () => {
-    const response = await fetch("/api/maps-config", { cache: "no-store" });
-    if (!response.ok) throw new Error("MAPS_NOT_CONFIGURED");
-    const { apiKey } = await response.json() as { apiKey?: string };
-    if (!apiKey) throw new Error("MAPS_NOT_CONFIGURED");
+    const apiKey = await getMapsApiKey();
     await new Promise<void>((resolve, reject) => {
       const callback = `__calmerCommuteMapsReady_${Date.now()}`;
       (window as any)[callback] = () => { delete (window as any)[callback]; resolve(); };
       const script = document.createElement("script");
       script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async&language=en&region=AU&callback=${callback}`;
       script.async = true;
-      script.onerror = () => reject(new Error("MAPS_LOAD_FAILED"));
+      script.onerror = () => {
+        window.__calmerCommuteMapsPromise = undefined;
+        reject(new Error("MAPS_LOAD_FAILED"));
+      };
       document.head.appendChild(script);
     });
-  })();
+  })().catch((error) => {
+    window.__calmerCommuteMapsPromise = undefined;
+    throw error;
+  });
   return window.__calmerCommuteMapsPromise;
 }
 
@@ -295,10 +323,7 @@ function decodePolyline(encoded: string) {
 }
 
 export async function requestRoutesApi(origin: string, destination: string, timing: TravelTiming | undefined, mode: "TRANSIT" | "WALK" = "TRANSIT") {
-  const config = await fetch("/api/maps-config", { cache: "no-store" });
-  if (!config.ok) throw new Error("MAPS_NOT_CONFIGURED");
-  const { apiKey } = await config.json() as { apiKey?: string };
-  if (!apiKey) throw new Error("MAPS_NOT_CONFIGURED");
+  const apiKey = await getMapsApiKey();
   const fieldMask = "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.duration,routes.legs.polyline.encodedPolyline,routes.legs.steps.staticDuration,routes.legs.steps.travelMode,routes.legs.steps.navigationInstruction,routes.legs.steps.polyline.encodedPolyline,routes.legs.steps.transitDetails";
   const fetchVariant = async (routingPreference?: "LESS_WALKING" | "FEWER_TRANSFERS") => {
     const response = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
@@ -330,7 +355,14 @@ export async function requestRoutesApi(origin: string, destination: string, timi
 export default function GeographicMap(props: Props) {
   const mapNode = useRef<HTMLDivElement>(null);
   const callbackRef = useRef(props.onRoutesResolved);
+  const sensorReadingsRef = useRef(props.sensorReadings);
+  const crowdLimitRef = useRef(props.crowdLimit);
+  const selectedRef = useRef(props.selected);
+  const resolvedRoutesKeyRef = useRef("");
   useEffect(() => { callbackRef.current = props.onRoutesResolved; }, [props.onRoutesResolved]);
+  useEffect(() => { sensorReadingsRef.current = props.sensorReadings; }, [props.sensorReadings]);
+  useEffect(() => { crowdLimitRef.current = props.crowdLimit; }, [props.crowdLimit]);
+  useEffect(() => { selectedRef.current = props.selected; }, [props.selected]);
   const [state, setState] = useState<RouteState>("loading");
   const [message, setMessage] = useState("Requesting current Google routes…");
   const isQuietSpot = Boolean(props.quietSpot);
@@ -338,6 +370,12 @@ export default function GeographicMap(props: Props) {
   const origin = isQuietSpot ? props.quietOrigin ?? props.origin ?? (direction === "to-work" ? HOME : WORK) : props.origin ?? (direction === "to-work" ? HOME : WORK);
   const destination = isQuietSpot ? props.quietDestination ?? CITY_LIBRARY : props.destination ?? (direction === "to-work" ? WORK : HOME);
   const googleUrl = googleDirections(origin, destination, isQuietSpot ? "walking" : "transit");
+  // Value deps only — object/array identity from parents must not retrigger Google Routes.
+  const timingMode = props.travelTiming?.mode ?? "now";
+  const timingDateTime = props.travelTiming?.dateTime ?? "";
+  const sensorSignature = (props.sensorReadings ?? [])
+    .map((reading) => `${reading.id}:${reading.peoplePerMinute ?? "x"}:${reading.freshness}`)
+    .join("|");
 
   useEffect(() => {
     let cancelled = false;
@@ -351,14 +389,21 @@ export default function GeographicMap(props: Props) {
         if (cancelled || !mapNode.current) return;
         const [{ Map }, { LatLngBounds }] = await Promise.all([window.google.maps.importLibrary("maps"), window.google.maps.importLibrary("core")]);
         const map = new Map(mapNode.current, { center: { lat: -37.8155, lng: 144.946 }, zoom: 13, mapTypeControl: false, streetViewControl: false, fullscreenControl: false, clickableIcons: false, gestureHandling: "cooperative" });
-        const result = await requestRoutesApi(origin, destination, props.travelTiming, isQuietSpot ? "WALK" : "TRANSIT");
+        const result = await requestRoutesApi(origin, destination, { mode: timingMode, dateTime: timingDateTime }, isQuietSpot ? "WALK" : "TRANSIT");
         const rawRoutes = [...(result?.routes ?? [])]
           .sort((a, b) => routeDurationMinutes(a) - routeDurationMinutes(b))
           .slice(0, isQuietSpot ? 1 : 4);
         if (!rawRoutes.length) { setState("not-found"); setMessage(isQuietSpot ? "Google did not return a walking route to this refuge." : "Google did not return a public-transport route for these places and travel time."); callbackRef.current?.([]); return; }
         const routes = rawRoutes.map(routeMeta);
-        callbackRef.current?.(routes);
-        const selectedIndex = Math.max(0, routes.findIndex((route) => route.id === props.selected));
+        const routesKey = routes.map((route) => route.id).join(",");
+        if (resolvedRoutesKeyRef.current !== routesKey) {
+          resolvedRoutesKeyRef.current = routesKey;
+          callbackRef.current?.(routes);
+        }
+        const selected = selectedRef.current;
+        const crowdLimit = crowdLimitRef.current ?? 25;
+        const sensorReadings = sensorReadingsRef.current ?? [];
+        const selectedIndex = Math.max(0, routes.findIndex((route) => route.id === selected));
         const chosen = rawRoutes[selectedIndex];
         const meta = routes[selectedIndex];
         const segments: { mode: "Walk" | "Transit"; path: any[] }[] = [];
@@ -379,16 +424,16 @@ export default function GeographicMap(props: Props) {
           polylines.push(new window.google.maps.Polyline({ map, path: segment.path, strokeColor: walking ? "#3f7567" : transitColor, strokeOpacity: walking ? 0 : .96, strokeWeight: walking ? 4 : 6, icons: walking ? [{ icon: { path: window.google.maps.SymbolPath.CIRCLE, fillColor: "#3f7567", fillOpacity: 1, strokeOpacity: 0, scale: 2.25 }, offset: "0", repeat: "12px" }] : undefined }));
         }
         if (!isQuietSpot) {
-          const usableReadings = (props.sensorReadings ?? []).filter((reading) =>
+          const usableReadings = sensorReadings.filter((reading) =>
             (reading.freshness === "fresh" || reading.freshness === "delayed") && reading.peoplePerMinute !== null,
           );
           const routeAssessment = routes.map((route) => {
             const direct = usableReadings.filter((reading) => route.directSensorIds.includes(reading.id));
             const matched = direct.length ? direct : usableReadings.filter((reading) => route.proxySensors.some((proxy) => proxy.id === reading.id));
             const hotspot = matched.sort((a, b) => (b.peoplePerMinute ?? -1) - (a.peoplePerMinute ?? -1))[0];
-            return { route, hotspot, risk: hotspot && (hotspot.peoplePerMinute ?? 0) > (props.crowdLimit ?? 25) ? "High" : hotspot ? "Low" : "Unknown" };
+            return { route, hotspot, risk: hotspot && (hotspot.peoplePerMinute ?? 0) > crowdLimit ? "High" : hotspot ? "Low" : "Unknown" };
           });
-          const selectedAssessment = routeAssessment.find((item) => item.route.id === props.selected);
+          const selectedAssessment = routeAssessment.find((item) => item.route.id === selected);
           const selectedHigh = selectedAssessment?.risk === "High" ? selectedAssessment : null;
           const avoidedHigh = routeAssessment
             .filter((item) => item.risk === "High" && item.hotspot && !selectedAssessment?.route.nearbySensorIds.includes(item.hotspot.id))
@@ -413,7 +458,7 @@ export default function GeographicMap(props: Props) {
         }
         const bounds = new LatLngBounds(); allPoints.forEach((point: any) => bounds.extend(point)); map.fitBounds(bounds, 46);
         const sensorInfo = new window.google.maps.InfoWindow();
-        const returnedSensorIds = new Set((props.sensorReadings ?? []).map((reading) => reading.id));
+        const returnedSensorIds = new Set(sensorReadings.map((reading) => reading.id));
         const directEvidenceIds = meta.directSensorIds.filter((id) => returnedSensorIds.has(id));
         // Show the complete supported corridor around the selected route. Direct
         // sensors remain the primary scoring evidence, while nearby proxy sensors
@@ -425,11 +470,11 @@ export default function GeographicMap(props: Props) {
         // Render every sensor returned by /api/crowd. Freshness controls whether
         // it can be classified, not whether its known location is visible.
         const sensorMarkers = SENSOR_LOCATIONS.filter((sensor) => returnedSensorIds.has(sensor.id)).map((sensor) => {
-          const reading = props.sensorReadings?.find((item) => item.id === sensor.id);
+          const reading = sensorReadings.find((item) => item.id === sensor.id);
           const relevant = relevantSensorIds.has(sensor.id);
           const count = reading?.peoplePerMinute ?? null;
           const classifiable = reading?.freshness === "fresh" || reading?.freshness === "delayed";
-          const risk: Risk = classifiable && count !== null ? (count <= (props.crowdLimit ?? 25) ? "Low" : "High") : "Unknown";
+          const risk: Risk = classifiable && count !== null ? (count <= crowdLimit ? "Low" : "High") : "Unknown";
           const fillColor = risk === "Low" ? "#2f7d61" : risk === "High" ? "#c5533d" : "#6e7781";
           const marker = new Marker({
             map,
@@ -494,7 +539,9 @@ export default function GeographicMap(props: Props) {
     }
     void renderRoute();
     return () => { cancelled = true; polylines.forEach((line) => line.setMap(null)); markers.forEach((marker) => marker.setMap(null)); };
-  }, [destination, direction, isQuietSpot, origin, props.selected, props.crowdLimit, props.sensorReadings, props.travelTiming]);
+    // crowdLimit is included so High/Low overlays and recommended corridor update with
+    // the slider. timingMode/timingDateTime are primitives so this does not loop.
+  }, [destination, direction, isQuietSpot, origin, props.selected, props.crowdLimit, sensorSignature, timingMode, timingDateTime]);
 
   return <div className="geo-map-wrap google-map-panel" role="region" aria-label="Google Maps selected route">
     <div ref={mapNode} className="google-live-map" aria-hidden={state !== "ready"} />
