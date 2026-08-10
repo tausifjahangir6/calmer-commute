@@ -126,7 +126,8 @@ export const defaultProfile: UserProfile = {
 };
 
 // Mocks POST /api/profile
-export async function saveProfile(profile: UserProfile): Promise<{ success: boolean }> {
+export async function saveProfile(_profile: UserProfile): Promise<{ success: boolean }> {
+  void _profile;
   await new Promise((resolve) => setTimeout(resolve, 300));
   return { success: true };
 }

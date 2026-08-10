@@ -3,6 +3,12 @@
 import os
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 
 class Config:
     """Named settings keep tunable behaviour out of route and service logic."""
