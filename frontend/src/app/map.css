@@ -175,6 +175,7 @@
   font-size: 9px;
 }
 .sensor-layer-status {
+  display: none;
   position: absolute;
   top: 66px;
   right: 12px;
@@ -193,12 +194,13 @@
 .sensor-map-legend i { width: 9px; height: 9px; border: 1.5px solid white; border-radius: 50%; box-shadow: 0 0 0 1px rgba(36,49,45,.18); }
 .sensor-map-legend .sensor-low { background: #2f7d61; }
 .sensor-map-legend .sensor-high { background: #c5533d; }
+.sensor-map-legend .sensor-unknown { background: #6e7781; }
 .sensor-map-legend .sensor-location { background: #1683b7; }
 .sensor-id-overlay.is-route-relevant {
   opacity: 1;
   pointer-events: auto;
 }
 .sensor-id-overlay.is-background {
-  opacity: 0;
-  pointer-events: none;
+  opacity: .55;
+  pointer-events: auto;
 }

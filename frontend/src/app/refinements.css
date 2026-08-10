@@ -217,9 +217,10 @@
 .journey-legs strong { font-size: 11px; line-height: 1.35; }
 .journey-legs small { color: var(--muted); font-size: 8px; }
 .journey-legs time { color: var(--muted); font-size: 10px; font-weight: 700; }
-.journey-view .journey-legs { grid-column: 2; grid-row: 3; }
-.journey-view .journey-alert, .journey-view .journey-data-unavailable, .journey-view .route-confirmation { grid-row: 4; }
-.journey-view .support-entry { grid-row: 5; }
+.journey-details-column .journey-itinerary,
+.journey-details-column .journey-alert,
+.journey-details-column .route-confirmation,
+.journey-details-column .support-entry { grid-column: auto; grid-row: auto; }
 
 @media (max-width: 760px) {
   .route-card { min-height: 345px; }

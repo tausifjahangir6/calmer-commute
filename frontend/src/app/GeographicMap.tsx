@@ -39,10 +39,10 @@ const HOME = "903/8 Pearl River Road, Docklands VIC 3008, Australia";
 const WORK = "Growth Factory, 3/292 Flinders Street, Melbourne VIC 3000, Australia";
 const CITY_LIBRARY = "City Library, 253 Flinders Lane, Melbourne VIC 3000, Australia";
 
-type SensorLocation = { id: number; name: string; lat: number; lng: number };
+export type SensorLocation = { id: number; name: string; lat: number; lng: number };
 
 // All 65 coordinate rows from pivoted_cleaned_20260808.csv.
-const SENSOR_LOCATIONS: SensorLocation[] = `1|Bourke Street Mall (North)|-37.813494|144.965153
+export const SENSOR_LOCATIONS: SensorLocation[] = `1|Bourke Street Mall (North)|-37.813494|144.965153
 2|Bourke Street Mall (South)|-37.813807|144.965167
 3|Melbourne Central|-37.811015|144.964295
 4|Town Hall (West)|-37.81488|144.966088
@@ -412,37 +412,37 @@ export default function GeographicMap(props: Props) {
         }
         const bounds = new LatLngBounds(); allPoints.forEach((point: any) => bounds.extend(point)); map.fitBounds(bounds, 46);
         const sensorInfo = new window.google.maps.InfoWindow();
-        const usableSensorIds = new Set((props.sensorReadings ?? [])
-          .filter((reading) => (reading.freshness === "fresh" || reading.freshness === "delayed") && reading.peoplePerMinute !== null)
-          .map((reading) => reading.id));
-        const directEvidenceIds = meta.directSensorIds.filter((id) => usableSensorIds.has(id));
+        const returnedSensorIds = new Set((props.sensorReadings ?? []).map((reading) => reading.id));
+        const directEvidenceIds = meta.directSensorIds.filter((id) => returnedSensorIds.has(id));
         // Show the complete supported corridor around the selected route. Direct
         // sensors remain the primary scoring evidence, while nearby proxy sensors
         // stay visible for consistent geographic coverage along the whole journey.
         const relevantSensorIds = new Set([
           ...directEvidenceIds,
-          ...meta.proxySensors.filter((sensor) => usableSensorIds.has(sensor.id)).map((sensor) => sensor.id),
+          ...meta.proxySensors.filter((sensor) => returnedSensorIds.has(sensor.id)).map((sensor) => sensor.id),
         ]);
-        const sensorMarkers = SENSOR_LOCATIONS.map((sensor) => {
+        // Render every sensor returned by /api/crowd. Freshness controls whether
+        // it can be classified, not whether its known location is visible.
+        const sensorMarkers = SENSOR_LOCATIONS.filter((sensor) => returnedSensorIds.has(sensor.id)).map((sensor) => {
           const reading = props.sensorReadings?.find((item) => item.id === sensor.id);
           const relevant = relevantSensorIds.has(sensor.id);
           const count = reading?.peoplePerMinute ?? null;
           const classifiable = reading?.freshness === "fresh" || reading?.freshness === "delayed";
           const risk: Risk = classifiable && count !== null ? (count <= (props.crowdLimit ?? 25) ? "Low" : "High") : "Unknown";
-          const fillColor = risk === "Low" ? "#2f7d61" : risk === "High" ? "#c5533d" : reading?.freshness === "stale" ? "#6e7781" : "#1683b7";
+          const fillColor = risk === "Low" ? "#2f7d61" : risk === "High" ? "#c5533d" : "#6e7781";
           const marker = new Marker({
             map,
             position: { lat: sensor.lat, lng: sensor.lng },
             title: `Sensor ${sensor.id} · ${sensor.name}`,
             zIndex: relevant ? 40 : 10,
-            clickable: relevant,
-            opacity: relevant ? 1 : .16,
+            clickable: true,
+            opacity: relevant ? 1 : .55,
             icon: {
               path: window.google.maps.SymbolPath.CIRCLE,
               fillColor,
               fillOpacity: 1,
               strokeColor: "#ffffff",
-              strokeOpacity: relevant ? 1 : .3,
+              strokeOpacity: relevant ? 1 : .7,
               strokeWeight: relevant ? 2.5 : 1,
               scale: relevant ? (sensor.id >= 100 ? 11 : 10) : 6,
             },
@@ -456,7 +456,7 @@ export default function GeographicMap(props: Props) {
               div.textContent = String(sensor.id);
               div.title = `Sensor ${sensor.id} · ${sensor.name}`;
               div.setAttribute("aria-label", div.title);
-              if (relevant) div.addEventListener("click", () => window.google.maps.event.trigger(marker, "click"));
+              div.addEventListener("click", () => window.google.maps.event.trigger(marker, "click"));
               this.div = div;
               this.getPanes()?.overlayMouseTarget.appendChild(div);
             }
@@ -468,11 +468,11 @@ export default function GeographicMap(props: Props) {
           };
           const idOverlay = new IdOverlay();
           idOverlay.setMap(map);
-          if (relevant) marker.addListener("click", () => {
+          marker.addListener("click", () => {
             const observed = reading?.latestObservation ? new Date(reading.latestObservation).toLocaleString("en-AU", { timeZone: "Australia/Melbourne", dateStyle: "medium", timeStyle: "short" }) : "No observation returned";
             const basis = reading?.evidence === "inferred-zero" ? " · inferred from no detections in 15 min" : reading?.evidence === "observed" ? ` · ${reading.sampleMinutes} detected minute${reading.sampleMinutes === 1 ? "" : "s"}` : "";
-            const timing = reading?.freshness === "delayed" ? " · latest available feed is delayed" : reading?.freshness === "stale" ? " · unavailable for classification" : "";
-            sensorInfo.setContent(`<div style="font:600 13px/1.45 system-ui;color:#17344a">Sensor ID ${sensor.id}<br><span style="font-weight:400">${sensor.name}</span><br><span style="font-weight:700;color:${fillColor}">${count === null ? "Count unavailable" : `${count} people/min · ${risk}`}</span><br><span style="font-weight:400">${observed}${basis}${timing}</span></div>`);
+            const timing = reading?.freshness === "delayed" ? " · latest available feed is delayed" : reading?.freshness === "stale" ? " · stale; unavailable for classification" : reading?.freshness === "unavailable" ? " · data unavailable" : "";
+            sensorInfo.setContent(`<div style="font:600 13px/1.45 system-ui;color:#17344a">Sensor ID ${sensor.id}<br><span style="font-weight:400">${sensor.name}</span><br><span style="font-weight:700;color:${fillColor}">${risk === "Unknown" ? "Unknown · no current classification" : `${count} people/min · ${risk}`}</span><br><span style="font-weight:400">${observed}${basis}${timing}</span></div>`);
             sensorInfo.open({ map, anchor: marker });
           });
           return [marker, idOverlay];
@@ -499,9 +499,7 @@ export default function GeographicMap(props: Props) {
     <div ref={mapNode} className="google-live-map" aria-hidden={state !== "ready"} />
     {state === "loading" && <div className={`route-map-state ${state}`} role="status"><span className="route-map-spinner" aria-hidden="true" /><strong>{message}</strong></div>}
     {(state === "not-found" || state === "unconfigured" || state === "error") && <div className={`route-map-state ${state}`} role="status"><strong>{message}</strong></div>}
-    <div className="google-route-summary" aria-live="polite"><span>{state === "ready" ? "Live Google route" : "Route status"}</span><strong>{message}</strong></div>
     {state === "ready" && !isQuietSpot && <>
-      <div className="sensor-layer-status" role="status">Route sensors highlighted</div>
       <div className="sensor-map-legend" aria-label="Pedestrian sensor legend"><span><i className="sensor-low" />Low</span><span><i className="sensor-high" />High</span></div>
     </>}
     <a className="google-route-action map-open-action" href={googleUrl} target="_blank" rel="noreferrer">Open in Google Maps</a>
