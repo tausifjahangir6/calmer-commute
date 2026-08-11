@@ -57,8 +57,8 @@ class Config:
     # Effect of raising these values: fewer sensors classify as
     # Medium/High (more conservative, more "Low" results). Lowering: more
     # sensors classify as Medium/High.
-    CROWD_LEVEL_LOW_MAX_PER_MINUTE = 50 / 60      # ~0.8333 people/minute
-    CROWD_LEVEL_MEDIUM_MAX_PER_MINUTE = 150 / 60  # =2.5 people/minute
+    # CROWD_LEVEL_LOW_MAX_PER_MINUTE = 50 / 60      # ~0.8333 people/minute
+    # CROWD_LEVEL_MEDIUM_MAX_PER_MINUTE = 150 / 60  # =2.5 people/minute
 
     DATA_DIR = Path(__file__).resolve().parent / "data"
     SENSOR_LOCATIONS_PATH = DATA_DIR / "sensor_locations.csv"

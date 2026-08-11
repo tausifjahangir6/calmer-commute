@@ -82,7 +82,7 @@ export default function Home() {
   const [routeUpdated, setRouteUpdated] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const [dynamicRoutes, setDynamicRoutes] = useState<DynamicRoute[]>([]);
-  const [testScenario, setTestScenario] = useState(true);
+  const [testScenario, setTestScenario] = useState(false);
   const travelTiming = DEFAULT_TRAVEL_TIMING;
 
   function handleHomeAddress(value: string) {
@@ -326,7 +326,8 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
     }
     async function loadForecast() {
       try {
-        const response = await fetch(`/api/predictions?sensor_id=${sensorId}&crowd_threshold=${crowdLimit}`, { cache: "no-store" });
+        const scenarioParam = crowdData?.scenario ? `&scenario=${crowdData.scenario.id}` : "";
+        const response = await fetch(`/api/predictions?sensor_id=${sensorId}&crowd_threshold=${crowdLimit}${scenarioParam}`, { cache: "no-store" });
         const payload = await response.json() as PredictionResponse;
         if (!cancelled) setHotspotForecast(payload);
       } catch {
@@ -335,7 +336,7 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
     }
     loadForecast();
     return () => { cancelled = true; };
-  }, [hotspotSensor?.id, crowdLimit]);
+  }, [hotspotSensor?.id, crowdLimit, crowdData?.scenario]);
   const verifiedAvoidance = Boolean(avoidedRoute && recommended && displayedHotspotRoute?.hotspotId === avoidedRoute.hotspotId);
   const noLowRoute = assessed.length > 0 && assessed.every((route) => route.crowdRisk === "High");
   const assessedRouteIds = assessed.map((route) => route.id).join(",");
@@ -355,7 +356,7 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
 
       <div className="route-threshold" aria-label="Live crowd threshold control">
         <div><strong>Your crowd limit</strong><span>{crowdLimit} people/min</span></div>
-        <input aria-label="Crowd threshold in people per minute" type="range" min={crowdData?.scenario ? "5" : "25"} max="200" step={crowdData?.scenario ? "1" : "25"} value={crowdLimit} onChange={(event) => onCrowdLimit(Number(event.target.value))} />
+        <input aria-label="Crowd threshold in people per minute" type="range" min="1" max="200" step="1" value={crowdLimit} onChange={(event) => onCrowdLimit(Number(event.target.value))} />
         <small>Adjust your limit to update the route cards and map.</small>
       </div>
 
@@ -494,7 +495,12 @@ function JourneyScreen(props: {
   const tramCount = props.crowdData?.routes?.tram?.peoplePerMinute ?? null;
   const selectedDynamic = props.dynamicRoutes.find((route) => route.id === props.selected) ?? props.dynamicRoutes[0];
   const liveForecast = trainSelected ? props.crowdData?.routes?.train?.forecast : props.crowdData?.routes?.tram?.forecast;
-  const forecastCount = dataAvailable ? liveForecast?.peoplePerMinute ?? null : null;
+  // Forecast validity is independent of whether enough CURRENT sensors are
+  // reporting (dataAvailable) -- the model can produce a valid forecast
+  // even when current-minute conditions are sparse. Previously this line
+  // forced forecastCount to null whenever dataAvailable was false, silently
+  // discarding a genuinely valid liveForecast.peoplePerMinute.
+  const forecastCount = liveForecast?.peoplePerMinute ?? null;
   const forecastExceedsLimit = forecastCount !== null && forecastCount > props.crowdLimit;
   return (
     <section className="app-screen journey-view" aria-label="Your journey">
@@ -516,10 +522,10 @@ function JourneyScreen(props: {
           <strong>{forecastCount === null ? "Forecast withheld" : `${forecastCount} people/min · ${forecastExceedsLimit ? "above" : "within"} your limit`}</strong>
           <small>
             {liveForecast?.validationMae !== null && liveForecast?.validationMae !== undefined
-              ? `${liveForecast.method}; runtime holdout MAE ${liveForecast.validationMae} people/min.`
-              : liveForecast?.method?.toLowerCase().includes("validated")
-              ? liveForecast.method
-              : "Insufficient holdout data for a runtime error estimate."}
+            ? `Runtime holdout MAE ${liveForecast.validationMae} people/min.`
+            : liveForecast?.method?.toLowerCase().includes("validated")
+            ? "Validated forecast model."
+            : "Insufficient holdout data for a runtime error estimate."}
           </small>
         </article>
 

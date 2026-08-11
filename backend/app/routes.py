@@ -147,4 +147,5 @@ def predictions():
     if not sensor_id:
         raise ApiError("'sensor_id' is required.", code="validation_error", details={"field": "sensor_id"})
     threshold = validate_threshold(request.args.get("crowd_threshold", current_app.config["DEFAULT_CROWD_THRESHOLD"]))
-    return jsonify(get_prediction(sensor_id, threshold, current_app.config["FORECAST_HORIZON_MINUTES"]))
+    scenario = request.args.get("scenario")
+    return jsonify(get_prediction(sensor_id, threshold, current_app.config["FORECAST_HORIZON_MINUTES"], scenario))

@@ -8,7 +8,9 @@ methodology, and full validated results (MAE 54.1, RMSE 143.2,
 time-ordered holdout).
 """
 
+import json
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from flask import current_app
@@ -16,48 +18,77 @@ from flask import current_app
 from app.ai.forecast import predict_count
 
 MELBOURNE_TZ = ZoneInfo("Australia/Melbourne")
+DOD_FORECAST_PATH = Path(__file__).resolve().parents[3] / "ai" / "models" / "dod_forecast.json"
 
 
-def classify_crowd_level(predicted_count_per_minute: float | None) -> str:
+def _load_dod_forecast(sensor_id: str) -> float | None:
+    try:
+        with open(DOD_FORECAST_PATH) as f:
+            dod_forecast = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    return dod_forecast.get(str(sensor_id))
+
+def classify_crowd_level(predicted_count_per_minute: float | None, threshold: float) -> str:
     """
-    Absolute LOW/MEDIUM/HIGH/UNKNOWN classification, per
-    AI_Team_Route_Scoring_Expectations.docx's explicit request. Bounds
-    come from database/schema/01_schema.sql's density_band table,
-    converted from hourly to per-minute units (see config.py's
-    CROWD_LEVEL_LOW_MAX_PER_MINUTE / CROWD_LEVEL_MEDIUM_MAX_PER_MINUTE for
-    the conversion and its documented limitation). Boundaries are
-    non-overlapping by construction (<=/<=/else), matching density_band's
-    own fix for the overlapping-bounds bug in "the sample" it replaces.
+    Threshold-RELATIVE LOW/MEDIUM/HIGH/UNKNOWN classification.
 
-    THIS IS A SEPARATE FIELD FROM predicted_level, not a replacement:
-    predicted_level answers "is this above THIS USER's personal
-    crowd_threshold" (binary High/Low, the live contract's existing,
-    tested behaviour per INTEGRATION_GUIDE.md). crowd_level answers
-    "where does this sit on a fixed, documented, four-band scale" (the
-    route-scoring team's explicit ask). Both are legitimate, answer
-    different questions, and this function changes neither predicted_level
-    nor any existing response field.
+    CHANGED 2026-08-11, deliberate decision: this was originally a FIXED
+    scale (density_band-derived, same cutoffs for every user). Reworked to
+    scale with the caller's own crowd_threshold instead, so the Medium
+    tier is meaningful at whatever sensitivity the user actually set,
+    rather than a fixed real-world standard that rarely lines up with a
+    low, personal threshold. This means crowd_level is no longer an
+    objective, user-independent scale -- it is now a three-tier version
+    of predicted_level, sharing the same threshold input.
+
+    Low:    predicted_count <= threshold / 2
+    Medium: threshold / 2 < predicted_count <= threshold
+    High:   predicted_count > threshold
     """
     if predicted_count_per_minute is None:
         return "Unknown"
-    low_max = current_app.config["CROWD_LEVEL_LOW_MAX_PER_MINUTE"]
-    medium_max = current_app.config["CROWD_LEVEL_MEDIUM_MAX_PER_MINUTE"]
-    if predicted_count_per_minute <= low_max:
+    half_threshold = threshold / 2
+    if predicted_count_per_minute <= half_threshold:
         return "Low"
-    if predicted_count_per_minute <= medium_max:
+    if predicted_count_per_minute <= threshold:
         return "Medium"
     return "High"
 
 
-def get_prediction(sensor_id: str, threshold: float, horizon_minutes: int) -> dict:
+def get_prediction(sensor_id: str, threshold: float, horizon_minutes: int, scenario: str | None = None) -> dict:
     """Same function signature and response keys as the original
     placeholder, per API_CONTRACT.md's component replacement boundary rules
     -- plus forecast_timestamp, added per
     AI_Team_Route_Scoring_Expectations.docx's example output shape.
+
+    scenario: when set to the DoD scenario id, serves the precomputed
+    2026-08-04 07:00 forecast for this sensor instead of calling the live
+    model -- keeps the DoD replay internally consistent (same fixed
+    moment for both current AND forecast data), and avoids showing
+    today's real live number mislabeled as belonging to that fixed demo
+    scenario.
     """
 
-    prediction = predict_count(sensor_id, horizon_minutes)
-    predicted_count = prediction.predicted_count_per_minute
+    if scenario == "2026-08-04T07:00":
+        dod_value = _load_dod_forecast(sensor_id)
+        predicted_count = dod_value
+        model_version = "crowd-forecast-rf-v1"
+        confidence = "high" if dod_value is not None else None
+        validation_status = "validated" if dod_value is not None else "not_validated"
+        data_mode = "live" if dod_value is not None else "mock"
+        limitation = (
+            "Precomputed forecast for the fixed 2026-08-04 07:00 DoD scenario "
+            "-- see ai/models/build_dod_forecast.py. Not a live recomputation."
+        ) if dod_value is not None else "No precomputed DoD forecast available for this sensor."
+    else:
+        prediction = predict_count(sensor_id, horizon_minutes)
+        predicted_count = prediction.predicted_count_per_minute
+        model_version = prediction.model_version
+        confidence = prediction.confidence
+        validation_status = prediction.validation_status
+        data_mode = prediction.data_mode
+        limitation = prediction.limitation
 
     if predicted_count is None:
         # Missing/insufficient evidence maps to Unknown, never silently to
@@ -85,14 +116,14 @@ def get_prediction(sensor_id: str, threshold: float, horizon_minutes: int) -> di
         "forecast_timestamp": forecast_timestamp_dt.isoformat(),
         "predicted_count_per_minute": predicted_count,
         "predicted_level": predicted_level,
-        "crowd_level": classify_crowd_level(predicted_count),
+        "crowd_level": classify_crowd_level(predicted_count, threshold),
         "crowd_threshold": threshold,
-        "model_version": prediction.model_version,
-        "confidence": prediction.confidence,
-        "validation_status": prediction.validation_status,
+        "model_version": model_version,
+        "confidence": confidence,
+        "validation_status": validation_status,
         "generated_at": generated_at_dt.isoformat(),
-        "data_mode": prediction.data_mode,
-        "limitation": prediction.limitation or (
+        "data_mode": data_mode,
+        "limitation": limitation or (
             "Forecast reflects hourly pedestrian density trained on City of "
             "Melbourne open data; it is a proxy for one aspect of sensory "
             "load, not a safety or accessibility guarantee. See "
