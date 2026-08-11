@@ -1,5 +1,4 @@
 """Flask port of the deployed Calmer Commute v81 crowd logic."""
-
 import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
