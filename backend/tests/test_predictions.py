@@ -166,35 +166,36 @@ def _prepare_live_sensor(monkeypatch, raw_hourly_forecast):
 
 
 def test_crowd_level_medium_band(client, monkeypatch):
-    """A raw hourly forecast of 100 (100/60 ~= 1.667 people/minute) sits
-    inside density_band's Medium range (51-150 hourly, converted to
-    ~0.833-2.5 per minute) -- the tier this gap-fix was actually about."""
-    _prepare_live_sensor(monkeypatch, raw_hourly_forecast=100.0)
+    """crowd_level is threshold-relative (Low <= threshold/2, Medium <=
+    threshold, High > threshold -- see prediction_service.py's
+    classify_crowd_level, reworked 2026-08-11). A raw hourly forecast of
+    1000 (1000/60 ~= 16.67 people/minute) sits between half the request's
+    threshold (25/2 = 12.5) and the full threshold (25), landing Medium."""
+    _prepare_live_sensor(monkeypatch, raw_hourly_forecast=1000.0)
 
     response = client.get("/api/predictions?sensor_id=5&crowd_threshold=25")
     body = response.get_json()
 
     assert response.status_code == 200
     assert body["crowd_level"] == "Medium"
-    # predicted_level (the existing, unrelated, threshold-relative field)
-    # must be untouched by this change -- confirms crowd_level is additive.
     assert "predicted_level" in body
 
 
-def test_crowd_level_boundaries_match_density_band_exactly(client, monkeypatch):
+def test_crowd_level_boundaries_are_threshold_relative(client, monkeypatch):
     """
-    Verifies the /60 per-minute conversion reproduces density_band's exact
-    integer boundaries (Low <=50, Medium 51-150, High >=151, all hourly)
-    at each edge, after rounding predicted_count_per_minute to 2 decimals
-    -- the same rounding forecast.py always applies. This is the
-    boundary-condition coverage requested against density_band's own
-    CHECK-constraint semantics.
+    Verifies crowd_level's boundaries genuinely scale with crowd_threshold
+    (not a fixed scale) -- at threshold=25, half-threshold=12.5:
+      Low:    predicted_count <= 12.5
+      Medium: 12.5 < predicted_count <= 25
+      High:   predicted_count > 25
+    Raw hourly values chosen so predicted_count_per_minute (raw/60,
+    rounded to 2dp) lands exactly on or just past each edge.
     """
     cases = [
-        (50.0, "Low"),      # density_band Low upper bound, inclusive
-        (51.0, "Medium"),   # density_band Medium lower bound, inclusive
-        (150.0, "Medium"),  # density_band Medium upper bound, inclusive
-        (151.0, "High"),    # density_band High lower bound, inclusive
+        (750.0, "Low"),      # 12.5/min exactly -- half-threshold, inclusive Low
+        (751.0, "Medium"),   # 12.52/min -- just above half-threshold
+        (1500.0, "Medium"),  # 25.0/min exactly -- threshold, inclusive Medium
+        (1501.0, "High"),    # 25.02/min -- just above threshold
     ]
     for raw_hourly, expected_level in cases:
         _prepare_live_sensor(monkeypatch, raw_hourly_forecast=raw_hourly)
