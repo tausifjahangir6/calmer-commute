@@ -321,7 +321,6 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
     let cancelled = false;
     const sensorId = hotspotSensor?.id;
     if (sensorId === undefined || sensorId === null) {
-      setHotspotForecast(null);
       return;
     }
     async function loadForecast() {
@@ -447,13 +446,13 @@ function RouteCard(props: { rank: number; title: string; transportMode: string; 
   );
 }
 function HotspotForecastCard({ forecast, sensorName }: { forecast: PredictionResponse | null; sensorName: string }) {
-  // Alert triggers off crowd_level (a fixed scale, calibrated to the
-  // forecast's own magnitude via density_band) -- not predicted_level,
-  // which compares against crowd_limit, a scale built for bursty CURRENT
+  // Alert triggers off predicted_level, which compares the forecast
+  // directly against the user's own crowd_limit slider -- crowd_level is a
+  // fixed scale (density_band-derived) calibrated for bursty CURRENT
   // minute-counts (11-50+/min), not smoothed hourly-average forecasts
-  // (typically under 1/min). Comparing the forecast to that slider means
-  // the alert could almost never fire in practice.
-  if (!forecast || forecast.crowd_level === "Low" || forecast.crowd_level === "Unknown") {
+  // (typically under 1/min), so gating on it meant the alert could almost
+  // never fire in practice.
+  if (!forecast || forecast.predicted_level !== "High") {
     return null;
   }
   const count = forecast.predicted_count_per_minute;

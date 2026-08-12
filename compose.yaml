@@ -5,7 +5,7 @@ services:
       dockerfile: backend/Dockerfile
     container_name: calmer-commute-backend
     ports:
-      - "5000:5000"
+      - "5050:5000"
     volumes:
       - ./backend:/app/backend
       - ./ai:/app/ai
@@ -35,7 +35,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_BASE_URL: "http://localhost:5000"
+      NEXT_PUBLIC_API_BASE_URL: "http://localhost:5050"
     depends_on:
       backend:
         condition: service_healthy
