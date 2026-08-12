@@ -105,6 +105,27 @@ def get_prediction(sensor_id: str, threshold: float, horizon_minutes: int, scena
     generated_at_dt = datetime.now(MELBOURNE_TZ)
     forecast_timestamp_dt = generated_at_dt + timedelta(minutes=horizon_minutes)
 
+    generic_disclaimer = (
+        "Forecast reflects hourly pedestrian density trained on City of "
+        "Melbourne open data; it is a proxy for one aspect of sensory "
+        "load, not a safety or accessibility guarantee. See "
+        "ai/docs/AI-US2.2-01_writeup.md for full methodology and limitations."
+    )
+    # A real, successful live forecast (not the DoD replay, not a missing-
+    # data refusal) may carry its OWN specific note from predict_count --
+    # e.g. forecast.py's freshness note, or rf_explain's high-volatility
+    # warning -- which is additional context on top of the standard
+    # disclaimer, not a replacement for it. Every other path's limitation
+    # (DoD replay, insufficient data, no model artifacts) is already a
+    # complete, standalone explanation, so it keeps its own either/or
+    # fallback instead of always being prefixed with the generic text.
+    is_live_forecast = scenario != "2026-08-04T07:00" and predicted_count is not None and data_mode == "live"
+    combined_limitation = (
+        " ".join(filter(None, [generic_disclaimer, limitation]))
+        if is_live_forecast
+        else (limitation or generic_disclaimer)
+    )
+
     return {
         "sensor_id": sensor_id,
         "forecast_horizon_minutes": horizon_minutes,
@@ -123,10 +144,5 @@ def get_prediction(sensor_id: str, threshold: float, horizon_minutes: int, scena
         "validation_status": validation_status,
         "generated_at": generated_at_dt.isoformat(),
         "data_mode": data_mode,
-        "limitation": limitation or (
-            "Forecast reflects hourly pedestrian density trained on City of "
-            "Melbourne open data; it is a proxy for one aspect of sensory "
-            "load, not a safety or accessibility guarantee. See "
-            "ai/docs/AI-US2.2-01_writeup.md for full methodology and limitations."
-        ),
+        "limitation": combined_limitation,
     }

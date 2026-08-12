@@ -22,6 +22,7 @@ falls back to the SAME deterministic shape the original placeholder used.
 """
 from __future__ import annotations
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 import sys
@@ -29,6 +30,7 @@ import pandas as pd
 
 MODEL_VERSION = "crowd-forecast-rf-v1"  # confirm naming convention with the team
 MELBOURNE_TZ = ZoneInfo("Australia/Melbourne")
+STALE_FEATURE_WARNING_HOURS = 1.5
 
 # Make ai/models and ai/features importable regardless of HOW this module is
 # run -- Docker's PYTHONPATH env var (compose.yaml) covers the container
@@ -75,6 +77,34 @@ def _ensure_artifacts_loaded() -> bool:
         _artifacts_loaded = False
 
     return _artifacts_loaded
+
+
+def _freshness_note(target_timestamp: pd.Timestamp) -> str | None:
+    """
+    The model correctly forecasts WHICHEVER hour its input features
+    describe (lag_24h/lag_168h are that sensor's real counts one day/one
+    week before target_timestamp) -- but that hour is not necessarily
+    close to wall-clock now, since both live_features.py and the frozen
+    latest_features.json snapshot depend on the City of Melbourne's own
+    dataset publication lag, not a same-hour live feed. Silently omitting
+    that turned a correct forecast for a quiet overnight hour into a
+    "this looks broken" report (0.4 people/min forecast vs 32/min current
+    reading) that had nothing to do with model or pipeline accuracy.
+
+    Returns None when the gap is small enough not to need calling out.
+    """
+    now_local = datetime.now(MELBOURNE_TZ).replace(tzinfo=None)
+    target_local = pd.Timestamp(target_timestamp).to_pydatetime().replace(tzinfo=None)
+    age_hours = (now_local - target_local).total_seconds() / 3600
+    if age_hours < STALE_FEATURE_WARNING_HOURS:
+        return None
+    return (
+        f"Forecast is for {target_local.strftime('%-d %b, %-I:%M%p')} "
+        f"(~{round(age_hours)}h behind now) -- the most recent hour City of "
+        "Melbourne's own pedestrian dataset has published for this sensor, "
+        "not a same-hour live feed. A quiet overnight forecast reflects a "
+        "real overnight hour, not a stale or inaccurate model."
+    )
 
 
 @dataclass
@@ -176,11 +206,16 @@ def predict_count(sensor_id: str, horizon_minutes: int) -> Prediction:
     # per-minute rate.
     predicted_count_per_minute = round(result["forecast"] / 60, 2)
 
+    combined_limitation = " ".join(filter(None, [
+        result.get("limitation"),
+        _freshness_note(row["timestamp"]),
+    ])) or None
+
     return Prediction(
         predicted_count_per_minute=predicted_count_per_minute,
         model_version=MODEL_VERSION,
         confidence=result.get("confidence"),  # CONFIRM: contract's own example shows null even when validated -- see note below
         validation_status=validation_status,
         data_mode="live",
-        limitation=result.get("limitation"),
+        limitation=combined_limitation,
     )
