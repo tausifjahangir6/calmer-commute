@@ -321,7 +321,6 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
     let cancelled = false;
     const sensorId = hotspotSensor?.id;
     if (sensorId === undefined || sensorId === null) {
-      setHotspotForecast(null);
       return;
     }
     async function loadForecast() {
