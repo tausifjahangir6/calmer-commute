@@ -125,7 +125,15 @@ def predict_count(sensor_id: str, horizon_minutes: int) -> Prediction:
             data_mode="unavailable",
         )
 
-    latest = _latest_features.get(sid)
+    from live_features import get_live_features
+    try:
+        latest = get_live_features(sid)
+    except Exception:
+        # Never let a live-fetch failure take down a request that the
+        # frozen snapshot could still have served.
+        latest = None
+    if latest is None:
+        latest = _latest_features.get(sid)
     if latest is None:
         return Prediction(
             predicted_count_per_minute=None,
