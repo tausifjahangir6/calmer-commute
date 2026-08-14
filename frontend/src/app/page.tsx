@@ -67,6 +67,61 @@ const EMPTY_SENSORS: CrowdData["mapSensors"] = [];
 // map effect, which called setDynamicRoutes and looped "Comparing public-transport…".
 const DEFAULT_TRAVEL_TIMING: TravelTiming = { mode: "now", dateTime: "" };
 
+function routeForecastFor(route: DynamicRoute | undefined, predictions: Record<number, PredictionResponse>) {
+  if (!route) return null;
+  const sensorIds = route.directSensorIds.length
+    ? route.directSensorIds
+    : route.proxySensors.map((sensor) => sensor.id);
+  return sensorIds
+    .map((sensorId) => predictions[sensorId])
+    .filter((prediction) => prediction?.predicted_count_per_minute !== null && prediction?.predicted_count_per_minute !== undefined)
+    .sort((a, b) => (b.predicted_count_per_minute ?? -1) - (a.predicted_count_per_minute ?? -1))[0] ?? null;
+}
+
+function useRoutePredictions(dynamicRoutes: DynamicRoute[], crowdLimit: number, crowdData: CrowdData | null) {
+  const predictionSensorKey = [...new Set(dynamicRoutes.flatMap((route) =>
+    route.directSensorIds.length ? route.directSensorIds : route.proxySensors.map((sensor) => sensor.id)
+  ))].sort((a, b) => a - b).join(",");
+  const rawScenarioId = crowdData?.scenario?.id;
+  const predictionScenarioId = rawScenarioId === "dod-2026-08-04-0700" ? "2026-08-04T07:00" : rawScenarioId;
+  const forecastRequestKey = predictionSensorKey
+    ? `${predictionSensorKey}|${crowdLimit}|${predictionScenarioId ?? "live"}`
+    : "";
+  const [routePredictions, setRoutePredictions] = useState<Record<number, PredictionResponse>>({});
+  const [loadedForecastKey, setLoadedForecastKey] = useState("");
+
+  useEffect(() => {
+    if (!predictionSensorKey) return;
+    let cancelled = false;
+    async function loadRouteForecasts() {
+      const sensorIds = predictionSensorKey.split(",").map(Number).filter(Number.isFinite);
+      const results = await Promise.all(sensorIds.map(async (sensorId) => {
+        try {
+          const params = new URLSearchParams({ sensor_id: String(sensorId), crowd_threshold: String(crowdLimit) });
+          if (predictionScenarioId) params.set("scenario", predictionScenarioId);
+          const response = await fetch(`/api/predictions?${params.toString()}`, { cache: "no-store" });
+          if (!response.ok) return null;
+          return { sensorId, prediction: await response.json() as PredictionResponse };
+        } catch {
+          return null;
+        }
+      }));
+      if (cancelled) return;
+      const next: Record<number, PredictionResponse> = {};
+      results.forEach((result) => { if (result) next[result.sensorId] = result.prediction; });
+      setRoutePredictions(next);
+      setLoadedForecastKey(forecastRequestKey);
+    }
+    void loadRouteForecasts();
+    return () => { cancelled = true; };
+  }, [predictionSensorKey, forecastRequestKey, crowdLimit, predictionScenarioId]);
+
+  return {
+    routePredictions,
+    routeForecastPending: Boolean(forecastRequestKey && loadedForecastKey !== forecastRequestKey),
+  };
+}
+
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("plan");
   const [selectedRoute, setSelectedRoute] = useState<RouteId>("route-0");
@@ -82,8 +137,8 @@ export default function Home() {
   const [routeUpdated, setRouteUpdated] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const [dynamicRoutes, setDynamicRoutes] = useState<DynamicRoute[]>([]);
-  const [testScenario, setTestScenario] = useState(false);
   const travelTiming = DEFAULT_TRAVEL_TIMING;
+  const { routePredictions, routeForecastPending } = useRoutePredictions(dynamicRoutes, crowdLimit, crowdData);
 
   function handleHomeAddress(value: string) {
     setHomeAddress(value);
@@ -101,7 +156,7 @@ export default function Home() {
     let cancelled = false;
     async function loadCrowdData() {
       try {
-        const response = await fetch(testScenario ? "/api/crowd?scenario=2026-08-04T07:00" : "/api/crowd", { cache: "no-store" });
+        const response = await fetch("/api/crowd", { cache: "no-store" });
         const payload = await response.json() as CrowdData;
         if (cancelled) return;
         setCrowdData(payload);
@@ -113,7 +168,7 @@ export default function Home() {
     loadCrowdData();
     const timer = window.setInterval(loadCrowdData, 15 * 60_000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [refreshToken, testScenario]);
+  }, [refreshToken]);
 
   function navigate(next: Screen) {
     setScreen(next);
@@ -131,8 +186,6 @@ export default function Home() {
             onHomeAddress={handleHomeAddress}
             onWorkAddress={handleWorkAddress}
             onContinue={() => navigate("routes")}
-            testScenario={testScenario}
-            onTestScenario={(value) => { setTestScenario(value); setCrowdLimit(value ? 12 : 25); }}
           />
         )}
 
@@ -155,6 +208,8 @@ export default function Home() {
             destination={workAddress}
             journeyDirection="to-work"
             dynamicRoutes={dynamicRoutes}
+            routePredictions={routePredictions}
+            routeForecastPending={routeForecastPending}
             onRoutesResolved={setDynamicRoutes}
             travelTiming={travelTiming}
           />
@@ -181,6 +236,8 @@ export default function Home() {
             destination={workAddress}
             journeyDirection="to-work"
             dynamicRoutes={dynamicRoutes}
+            routePredictions={routePredictions}
+            routeForecastPending={routeForecastPending}
             onRoutesResolved={setDynamicRoutes}
             travelTiming={travelTiming}
           />
@@ -188,6 +245,7 @@ export default function Home() {
 
         {screen === "quiet" && <QuietSpotScreen onBack={() => navigate("journey")} arrivalAddress={workAddress} crowdData={crowdData} crowdLimit={crowdLimit} />}
       </div>
+      {screen === "plan" && <SiteFooter />}
     </main>
   );
 }
@@ -195,17 +253,24 @@ export default function Home() {
 function SiteHeader({ onHome }: { onHome: () => void }) {
   return (
     <header className="site-header">
-      <button className="brand-lockup" onClick={onHome} aria-label="Calmer Commute home">
-        <span className="brand-mark" aria-hidden="true">C</span>
-        <span className="brand-copy">
-          <strong>Calmer Commute</strong>
-          <em>A sensory-aware way to move through Melbourne</em>
-        </span>
+      <button className="brand-lockup" onClick={onHome} aria-label="Calm-panion home">
+        <span className="brand-mark" aria-hidden="true" />
+        <span className="brand-copy"><strong>Calm-panion</strong></span>
       </button>
-      <nav className="site-nav" aria-label="Journey planner">
-        <span className="web-label">Sensory-aware journey planner</span>
-      </nav>
+      <div className="header-location" aria-label="Location: Melbourne">
+        <i aria-hidden="true" />
+        <span>Melbourne</span>
+      </div>
     </header>
+  );
+}
+
+function SiteFooter() {
+  return (
+    <footer className="site-footer">
+      <span>Made for sensory-sensitive journeys across Melbourne CBD.</span>
+      <span>Conditions can change. Choose what feels right.</span>
+    </footer>
   );
 }
 
@@ -230,41 +295,39 @@ function PlanScreen(props: {
   onHomeAddress: (value: string) => void;
   onWorkAddress: (value: string) => void;
   onContinue: () => void;
-  testScenario: boolean;
-  onTestScenario: (value: boolean) => void;
 }) {
   return (
     <section className="app-screen plan-view" aria-label="Plan your journey">
-      <ScreenHeader
-        title="Calmer Commute"
-        subtitle="Choose the calmer journey that suits you."
-      />
+      <div className="plan-introduction">
+        <p className="plan-kicker">A CALMER WAY THROUGH THE CITY</p>
+        <h1>Arrive calm<br />and prepared.</h1>
+        <p className="plan-description">Compare sensory-aware routes using latest pedestrian conditions and your personal crowd limit.</p>
+      </div>
 
       <div className="planner-panel">
+        <div className="planner-heading">
+          <p>PLAN YOUR JOURNEY</p>
+          <h2>Where are you going?</h2>
+        </div>
         <div className="location-card">
           <label>
-            <span>From</span>
-            <PlaceSearch ariaLabel="Departure address" value={props.homeAddress} onChange={props.onHomeAddress} />
+            <span>Start</span>
+            <PlaceSearch ariaLabel="Departure address" placeholder="Origin" value={props.homeAddress} onChange={props.onHomeAddress} />
           </label>
           <div className="location-connector" aria-hidden="true"><i /><span /></div>
           <label>
-            <span>To</span>
-            <PlaceSearch ariaLabel="Destination address" value={props.workAddress} onChange={props.onWorkAddress} />
+            <span>Finish</span>
+            <PlaceSearch ariaLabel="Destination address" placeholder="Destination" value={props.workAddress} onChange={props.onWorkAddress} />
           </label>
         </div>
 
-        <button className="primary-action" onClick={props.onContinue}>Compare routes</button>
-        <label className="test-scenario-toggle">
-          <input type="checkbox" checked={props.testScenario} onChange={(event) => props.onTestScenario(event.target.checked)} />
-          <span><strong>DoD check</strong><small>4 Aug 2026 · 7:00 am historical hourly conditions</small></span>
-        </label>
-        <p className="planner-note">Crowd preferences can be adjusted on the next screen.</p>
+        <button className="primary-action" onClick={props.onContinue}>Find my calmer route <span aria-hidden="true">→</span></button>
       </div>
     </section>
   );
 }
 
-function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData, onSelect, onBack, onContinue, origin, destination, journeyDirection, dynamicRoutes, onRoutesResolved, travelTiming }: { selected: RouteId; crowdLimit: number; onCrowdLimit: (value: number) => void; dataState: DataState; crowdData: CrowdData | null; onRefresh: () => void; onSelect: (value: RouteId) => void; onBack: () => void; onContinue: () => void; origin: string; destination: string; journeyDirection: JourneyDirection; dynamicRoutes: DynamicRoute[]; onRoutesResolved: (routes: DynamicRoute[]) => void; travelTiming: TravelTiming }) {
+function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData, onSelect, onBack, onContinue, origin, destination, journeyDirection, dynamicRoutes, routePredictions, routeForecastPending, onRoutesResolved, travelTiming }: { selected: RouteId; crowdLimit: number; onCrowdLimit: (value: number) => void; dataState: DataState; crowdData: CrowdData | null; onRefresh: () => void; onSelect: (value: RouteId) => void; onBack: () => void; onContinue: () => void; origin: string; destination: string; journeyDirection: JourneyDirection; dynamicRoutes: DynamicRoute[]; routePredictions: Record<number, PredictionResponse>; routeForecastPending: boolean; onRoutesResolved: (routes: DynamicRoute[]) => void; travelTiming: TravelTiming }) {
   const usableSensors = getUsableSensors(crowdData);
   const dataAvailable = usableSensors.length > 0;
   const trainCount = crowdData?.routes?.train?.peoplePerMinute ?? null;
@@ -279,14 +342,12 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
     const matched = directMatched.length ? directMatched : proxyMatched;
     const count = matched.length ? Math.max(...matched.map((sensor) => sensor.peoplePerMinute as number)) : null;
     const crowdRisk = riskFrom(count, crowdLimit);
-    const forecast = route.transportMode.toLowerCase().includes("train")
-      ? crowdData?.routes?.train?.forecast
-      : crowdData?.routes?.tram?.forecast;
-    const forecastCount = dataAvailable ? forecast?.peoplePerMinute ?? null : null;
+    const endpointForecast = routeForecastFor(route, routePredictions);
+    const forecastCount = endpointForecast?.predicted_count_per_minute ?? null;
     const forecastRisk = riskFrom(forecastCount, crowdLimit);
     const evidenceQuality = directMatched.length ? "direct" : proxyMatched.length ? "proxy" : "none";
     const inferredSensorIds = matched.filter((sensor) => sensor.evidence === "inferred-zero").map((sensor) => sensor.id);
-    return { ...route, count, crowdRisk, forecastCount, forecastRisk, forecastHorizonMinutes: forecast?.horizonMinutes ?? 60, evidenceQuality, matchedSensorIds: matched.map((sensor) => sensor.id), inferredSensorIds, nearbyStaleSensorIds: nearbyStale.map((sensor) => sensor.id) };
+    return { ...route, count, crowdRisk, forecastCount, forecastRisk, forecastHorizonMinutes: endpointForecast?.forecast_horizon_minutes ?? 60, evidenceQuality, matchedSensorIds: matched.map((sensor) => sensor.id), inferredSensorIds, nearbyStaleSensorIds: nearbyStale.map((sensor) => sensor.id) };
   });
   const fastest = assessed.length ? [...assessed].sort((a, b) => a.durationMinutes - b.durationMinutes)[0] : null;
   const lowRoutes = assessed.filter((route) => route.crowdRisk === "Low");
@@ -351,20 +412,22 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
   }, [crowdLimit, recommended?.id, onSelect]);
   return (
     <section className={`app-screen routes-view ${noLowRoute ? "has-no-low-route" : ""}`} aria-label="Select your path">
-      <ScreenHeader title="Sensory-aware journey options" subtitle="Calmer Commute recommends sensory aware routes using supported pedestrian evidence and your crowd limit." back={onBack} />
+      <ScreenHeader title="Sensory-aware journey options" subtitle="Compare sensory-aware routes using latest pedestrian conditions and your personal crowd limit." back={onBack} />
 
       <div className="route-threshold" aria-label="Live crowd threshold control">
-        <div><strong>Your crowd limit</strong><span>{crowdLimit} people/min</span></div>
+        <div><strong>Adjust crowd limit</strong><span>{crowdLimit} people/min</span></div>
         <input aria-label="Crowd threshold in people per minute" type="range" min="1" max="200" step="1" value={crowdLimit} onChange={(event) => onCrowdLimit(Number(event.target.value))} />
-        <small>Adjust your limit to update the route cards and map.</small>
+        <small>Route recommendations update when this limit changes.</small>
       </div>
 
       <div className="route-decision-stack">
+        <button className="primary-action" onClick={onContinue} disabled={!selectedDynamic}>{selectedDynamic ? "Start journey" : "Checking your journey..."}</button>
+        {noLowRoute && <p className="no-low-route" role="status"><strong>No route is within your crowd limit right now.</strong><span>You can wait and check again, or try different locations.</span></p>}
         {displayedHotspotRoute && hotspotSensor && hotspotMeta && (
           <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
             <article className="hotspot-avoidance" aria-live="polite" style={{ flex: "1 1 260px" }}>
-              <div className="hotspot-heading"><span aria-hidden="true">!</span><div><small>Supported crowd hotspot</small><strong>{hotspotMeta.name}</strong></div></div>
-              <p><b>{hotspotSensor.peoplePerMinute} people/min · High</b> on the {displayedHotspotRoute.route.service} corridor · Sensor {hotspotSensor.id} · {formatObservation(hotspotSensor.latestObservation)}</p>
+              <div className="hotspot-heading"><span aria-hidden="true">!</span><div><small>BUSY AREA AHEAD</small><strong>{hotspotMeta.name.replace(/\s*-\s*New footpath\s*$/i, "")}</strong></div></div>
+              <p><b>High crowd · {formatObservation(hotspotSensor.latestObservation)}</b></p>
               {verifiedAvoidance && recommended ? <>
                 <div className="avoidance-result"><span aria-hidden="true">✓</span><p><strong>{recommended.service} recommended</strong><small>Avoids this supported High-crowd corridor.</small></p></div>
                 <p className="explicit-tradeoff"><strong>Trade-off:</strong> {recommended.durationMinutes === displayedHotspotRoute.route.durationMinutes ? "same journey time" : `${Math.abs(recommended.durationMinutes - displayedHotspotRoute.route.durationMinutes)} min ${recommended.durationMinutes > displayedHotspotRoute.route.durationMinutes ? "longer" : "shorter"}`} · {recommended.walkingMinutes === displayedHotspotRoute.route.walkingMinutes ? "same walking time" : `${Math.abs(recommended.walkingMinutes - displayedHotspotRoute.route.walkingMinutes)} min ${recommended.walkingMinutes > displayedHotspotRoute.route.walkingMinutes ? "more" : "less"} walking`}</p>
@@ -373,7 +436,6 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
             <HotspotForecastCard forecast={hotspotForecast} sensorName={hotspotMeta.name} />
           </div>
         )}
-        <button className="primary-action" onClick={onContinue} disabled={!selectedDynamic}>{selectedDynamic ? `Start ${selectedDynamic.service} journey` : "Waiting for Google routes"}</button>
       </div>
 
       <div className="route-cards" role="radiogroup" aria-label="Route options">
@@ -382,67 +444,60 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
           title={route.service}
           transportMode={route.transportMode}
           duration={route.duration}
-          load={dataState === "loading" ? "Checking current sensor readings…" : `Current crowd · ${route.crowdRisk}`}
-          detail={dataState === "loading" ? "Crowd classification will appear when the current data check finishes." : route.count === null ? "Current crowd unavailable" : `${route.count} people/min · ${crowdData?.scenario ? "historical hourly average" : "latest available"} · ${route.count > crowdLimit ? "above" : "within"} your ${crowdLimit}/min limit`}
-          forecast={route.forecastCount === null ? "Forecast unavailable" : `${route.forecastHorizonMinutes} min forecast · ${route.forecastRisk} expected · ${route.forecastCount} people/min predicted`}
-          evidence={`${route.walkingMinutes} min walking · ${route.transfers} transfer${route.transfers === 1 ? "" : "s"} · ${route.evidenceQuality === "direct" ? `${route.matchedSensorIds.length} direct sensor${route.matchedSensorIds.length === 1 ? "" : "s"} (≤75 m)` : route.evidenceQuality === "proxy" ? `${route.matchedSensorIds.length} proxy sensor${route.matchedSensorIds.length === 1 ? "" : "s"} (75–150 m)` : route.nearbyStaleSensorIds.length ? `nearby sensor${route.nearbyStaleSensorIds.length === 1 ? "" : "s"} ID ${route.nearbyStaleSensorIds.join(", ")} found · latest reading stale` : "no sensor reading available within 150 m"}`}
-          tradeoff={dataState === "loading" ? "Please wait while current evidence is checked." : route.crowdRisk === "Unknown" ? "No sensory recommendation · evidence unavailable" : route.inferredSensorIds.length ? `${route.crowdRisk} (inferred) · Active sensor · no detections in latest complete 15-minute window` : route.evidenceQuality === "proxy" ? `${route.crowdRisk} · lower-confidence nearby-area proxy · partial coverage` : `${route.crowdRisk}: ${route.count} ${route.count !== null && route.count > crowdLimit ? ">" : "≤"} ${crowdLimit} people/min`}
+          load={dataState === "loading" ? "Checking your journey..." : route.crowdRisk === "Unknown" ? "Crowd unavailable" : `Crowd ${route.crowdRisk.toLowerCase()}`}
+          current={dataState === "loading" ? "Checking your journey..." : route.count === null ? "Unavailable" : `${route.count} people/min · ${formatObservation(latestMatchedObservation(crowdData, route.matchedSensorIds))}`}
+          forecast={routeForecastPending ? "Checking forecast..." : route.forecastCount === null ? "Unavailable" : `${route.forecastCount} people/min · within next ${route.forecastHorizonMinutes} min`}
           tone={route.crowdRisk === "Unknown" ? "neutral" : route.crowdRisk === "High" ? "warm" : "calm"}
           selected={selectedDynamic?.id === route.id}
           recommended={recommended?.id === route.id}
           onClick={() => onSelect(route.id)}
         />)}
-        {!assessed.length && <p className="recommendation-withheld"><strong>Requesting Google alternatives…</strong><span>The cards will appear when genuine public-transport routes are returned.</span></p>}
-      </div>
-
-      {crowdData?.scenario && <p className="scenario-banner" role="status"><strong>DoD check</strong><span>{crowdData.scenario.label} · {crowdData.scenario.observationWindow}</span></p>}
-
-      <div className="selection-copy" aria-live="polite">
-        <span>{selectedDynamic ? `${selectedDynamic.service} selected` : "Waiting for Google routes"}</span>
-        <strong>{selectedDynamic ? `${selectedDynamic.duration} · ${selectedDynamic.crowdRisk} crowd classification` : "No route assessment yet"}</strong>
+        {!assessed.length && <p className="recommendation-withheld"><strong>Checking your journey...</strong></p>}
       </div>
 
       <section className="route-preview" aria-label={`${selectedDynamic?.service ?? "Google public transport"} route preview`}>
         <div className="route-preview-heading">
           <div>
-            <span>Selected route preview</span>
-            <h2>{selectedDynamic?.service ?? "Google public transport"}</h2>
+            <span>Selected journey preview</span>
           </div>
-          <strong>{selectedDynamic?.duration ?? "Checking…"}</strong>
         </div>
         <RealMap selected={selected} crowdLimit={crowdLimit} trainCount={trainCount} tramCount={tramCount} sensorReadings={crowdData?.mapSensors ?? EMPTY_SENSORS} refuge origin={origin} destination={destination} journeyDirection={journeyDirection} onRoutesResolved={onRoutesResolved} travelTiming={travelTiming} />
-        <JourneyLegs selected={selected} journeyDirection={journeyDirection} route={selectedDynamic} />
+        <JourneyRouteLegend selected={selected} route={selectedDynamic} />
+        <JourneyLegs selected={selected} journeyDirection={journeyDirection} route={selectedDynamic} condensed showLegend={false} />
       </section>
 
-      {dataState === "loading" ? <p className="recommendation-withheld" role="status" aria-live="polite"><strong>Checking current sensor readings…</strong><span>Current crowd guidance will appear when the data check finishes.</span></p> : !dataAvailable && <p className="recommendation-withheld" role="status"><strong>No crowd recommendation available.</strong><span>{dataStateCopy.safeResponse}</span></p>}
+      {dataState === "loading" ? <p className="recommendation-withheld" role="status" aria-live="polite"><strong>Checking your journey...</strong></p> : !dataAvailable && <p className="recommendation-withheld" role="status"><strong>No crowd recommendation available.</strong><span>{dataStateCopy.safeResponse}</span></p>}
 
-      {noLowRoute && <p className="no-low-route" role="status"><strong>No route is within your crowd limit right now.</strong><span>You can wait and check again, or continue with either route. Calmer Commute will not block your choice.</span></p>}
-
-      {highRoutes.length > 0 && !noLowRoute && !avoidedRoute && <p className="no-low-route" role="status"><strong>No verified route avoids the supported High-crowd corridor.</strong><span>A lower-scoring route may exist, but Calmer Commute will not claim corridor avoidance without supported evidence.</span></p>}
+      {highRoutes.length > 0 && !noLowRoute && !avoidedRoute && <p className="no-low-route" role="status"><strong>No verified route avoids the supported High-crowd corridor.</strong><span>A lower-scoring route may exist, but Calm-panion will not claim corridor avoidance without supported evidence.</span></p>}
 
     </section>
   );
 }
 
-function RouteCard(props: { rank: number; title: string; transportMode: string; duration: string; load: string; detail: string; forecast: string; evidence: string; tradeoff: string; tone: "warm" | "calm" | "neutral"; selected: boolean; recommended?: boolean; onClick: () => void }) {
+function RouteCard(props: { rank: number; title: string; transportMode: string; duration: string; load: string; current: string; forecast: string; tone: "warm" | "calm" | "neutral"; selected: boolean; recommended?: boolean; onClick: () => void }) {
   return (
-    <button className={`route-card ${props.tone} ${props.selected ? "selected" : ""}`} role="radio" aria-checked={props.selected} onClick={props.onClick}>
-      <span className="route-rank">Suggestion {props.rank}</span>
+    <article className={`route-card ${props.tone} ${props.selected ? "selected" : ""}`} role="radio" aria-checked={props.selected} tabIndex={0} onClick={props.onClick} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); props.onClick(); } }}>
+      <span className="route-rank">Option {props.rank}</span>
       <div className="route-labels">
-        {props.recommended && <span className="recommended">Recommended · Low crowd</span>}
+        {props.recommended && <span className="recommended">Recommended</span>}
       </div>
       <span className="route-radio" aria-hidden="true"><i /></span>
-      <span className="transport-mode" aria-label={`Transport mode: ${props.transportMode || "Public transport"}`}>
-        {props.transportMode || "Public transport"}
-      </span>
-      <h2>{props.title}</h2>
-      <strong>{props.duration}</strong>
       <div className="load-badge"><span aria-hidden="true">{props.tone === "warm" ? "!" : props.tone === "neutral" ? "?" : "✓"}</span>{props.load}</div>
-      <p>{props.detail}</p>
-      <p className="route-forecast">{props.forecast}</p>
-      <small className="route-evidence">{props.evidence}</small>
-      <small className="route-tradeoff">{props.tradeoff}</small>
-    </button>
+      <div className="route-core">
+        <strong className="route-duration">{props.duration}</strong>
+        <div className="route-service-row">
+          <span className="route-mode-badge">{formatTransportMode(props.transportMode)}</span>
+          <h2>{formatServiceNumber(props.transportMode, props.title)}</h2>
+        </div>
+      </div>
+      <details onClick={(event) => event.stopPropagation()}>
+        <summary>More details</summary>
+        <div className="route-detail-content">
+          <div><strong>Current</strong><p>{props.current}</p></div>
+          <div><strong>Forecast</strong><p>{props.forecast}</p></div>
+        </div>
+      </details>
+    </article>
   );
 }
 function HotspotForecastCard({ forecast, sensorName }: { forecast: PredictionResponse | null; sensorName: string }) {
@@ -484,52 +539,44 @@ function JourneyScreen(props: {
   destination: string;
   journeyDirection: JourneyDirection;
   dynamicRoutes: DynamicRoute[];
+  routePredictions: Record<number, PredictionResponse>;
+  routeForecastPending: boolean;
   onRoutesResolved: (routes: DynamicRoute[]) => void;
   travelTiming: TravelTiming;
 }) {
-  const trainSelected = props.selected === props.dynamicRoutes[0]?.id;
   const usableSensors = getUsableSensors(props.crowdData);
   const dataAvailable = usableSensors.length > 0;
   const trainCount = props.crowdData?.routes?.train?.peoplePerMinute ?? null;
   const tramCount = props.crowdData?.routes?.tram?.peoplePerMinute ?? null;
   const selectedDynamic = props.dynamicRoutes.find((route) => route.id === props.selected) ?? props.dynamicRoutes[0];
-  const liveForecast = trainSelected ? props.crowdData?.routes?.train?.forecast : props.crowdData?.routes?.tram?.forecast;
-  // Forecast validity is independent of whether enough CURRENT sensors are
-  // reporting (dataAvailable) -- the model can produce a valid forecast
-  // even when current-minute conditions are sparse. Previously this line
-  // forced forecastCount to null whenever dataAvailable was false, silently
-  // discarding a genuinely valid liveForecast.peoplePerMinute.
-  const forecastCount = liveForecast?.peoplePerMinute ?? null;
+  const selectedRouteForecast = routeForecastFor(selectedDynamic, props.routePredictions);
+  const forecastCount = selectedRouteForecast?.predicted_count_per_minute ?? null;
   const forecastExceedsLimit = forecastCount !== null && forecastCount > props.crowdLimit;
   return (
     <section className="app-screen journey-view" aria-label="Your journey">
-      <ScreenHeader title={props.journeyDirection === "to-work" ? "Sensory-aware Journey" : "Freddy’s journey home"} subtitle={dataAvailable ? `City sensor update · ${formatObservation(props.crowdData?.latestObservation ?? null)} · CBD approach only` : "Current CBD crowd classification unavailable"} back={props.onBack} />
+      <ScreenHeader title="Selected journey" subtitle={dataAvailable ? `CBD sensor ${formatObservation(props.crowdData?.latestObservation ?? null).replace(/^Updated/, "updated")}` : "Current CBD crowd classification unavailable"} back={props.onBack} />
 
-      <RealMap selected={props.selected} crowdLimit={props.crowdLimit} trainCount={trainCount} tramCount={tramCount} sensorReadings={props.crowdData?.mapSensors ?? EMPTY_SENSORS} refuge origin={props.origin} destination={props.destination} journeyDirection={props.journeyDirection} onRoutesResolved={props.onRoutesResolved} travelTiming={props.travelTiming} />
+      <div className="journey-map-column">
+        <RealMap selected={props.selected} crowdLimit={props.crowdLimit} trainCount={trainCount} tramCount={tramCount} sensorReadings={props.crowdData?.mapSensors ?? EMPTY_SENSORS} refuge origin={props.origin} destination={props.destination} journeyDirection={props.journeyDirection} onRoutesResolved={props.onRoutesResolved} travelTiming={props.travelTiming} />
+        <JourneyRouteLegend selected={props.selected} route={selectedDynamic} />
+      </div>
 
       <div className="journey-details-column">
         <div className="next-step-card">
           <span>Next</span>
-          <h2>{selectedDynamic?.legs[0]?.label ?? "Follow the selected Google journey"}</h2>
+          <h2>{selectedDynamic?.legs[0]?.label ?? "Checking your journey..."}</h2>
           <div><strong>{selectedDynamic?.duration ?? "Checking…"}</strong><small>{props.journeyDirection === "to-work" ? "morning estimate" : "5:30 PM estimate"}</small></div>
         </div>
 
-        <JourneyLegs selected={props.selected} journeyDirection={props.journeyDirection} route={selectedDynamic} />
+        <JourneyLegs selected={props.selected} journeyDirection={props.journeyDirection} route={selectedDynamic} showLegend={false} />
 
         <article className="forecast-evidence" aria-live="polite">
-          <div><span>60-minute forecast</span><b>{liveForecast?.confidence ?? "Unavailable"}</b></div>
-          <strong>{forecastCount === null ? "Forecast withheld" : `${forecastCount} people/min · ${forecastExceedsLimit ? "above" : "within"} your limit`}</strong>
-          <small>
-            {liveForecast?.validationMae !== null && liveForecast?.validationMae !== undefined
-            ? `Runtime holdout MAE ${liveForecast.validationMae} people/min.`
-            : liveForecast?.method?.toLowerCase().includes("validated")
-            ? "Validated forecast model."
-            : "Insufficient holdout data for a runtime error estimate."}
-          </small>
+          <div><span>60-minute forecast</span></div>
+          <strong>{props.routeForecastPending ? "Checking forecast..." : forecastCount === null ? "Forecast withheld" : `${forecastCount} people/min · ${forecastExceedsLimit ? "above" : "within"} your limit`}</strong>
         </article>
 
         <button className="support-entry" onClick={props.onFindRefuge}>
-          <span><strong>Find a nearby quiet place</strong><small>Candidate public refuges ranked from your entered arrival address</small></span>
+          <span><strong>Find a nearby quiet place</strong><small>Calmer public space near your destination</small></span>
           <b aria-hidden="true">›</b>
         </button>
       </div>
@@ -537,20 +584,90 @@ function JourneyScreen(props: {
   );
 }
 
-function JourneyLegs({ selected, route }: { selected: RouteId; journeyDirection?: JourneyDirection; route?: DynamicRoute }) {
+function JourneyLegs({ selected, route, condensed = false, showLegend = true }: { selected: RouteId; journeyDirection?: JourneyDirection; route?: DynamicRoute; condensed?: boolean; showLegend?: boolean }) {
   const legs = route?.legs ?? [];
+  const displayedLegs = condensed ? condenseJourneyLegs(route) : legs;
   return <div className="journey-itinerary">
     <ol className="journey-legs" aria-label="Journey legs">
-      {legs.map((leg, index) => <li key={`${leg.mode}-${leg.label}-${index}`}>
-        <span className="leg-number">{index + 1}</span><div><b>{leg.mode}</b><strong>{leg.label}</strong><small>{leg.mode === "Transit" ? "Onboard crowding Unknown" : "Walking exposure included in sensory score"}</small></div><time>{leg.duration}</time>
+      {displayedLegs.map((leg, index) => <li key={`${leg.mode}-${leg.label}-${index}`}>
+        <span className="leg-number">{index + 1}</span><div><b>{leg.mode}</b><strong>{leg.label}</strong></div><time>{leg.duration}</time>
       </li>)}
-      {!legs.length && <li><span className="leg-number">…</span><div><b>Google route</b><strong>Requesting itinerary</strong><small>No fixed service is substituted.</small></div><time>—</time></li>}
+      {!displayedLegs.length && <li><span className="leg-number">…</span><div><b>Journey</b><strong>Checking your journey...</strong></div><time>—</time></li>}
     </ol>
-    <div className="journey-route-legend" aria-label="Route line legend">
-      <span><i className="legend-walk" aria-hidden="true" />Walk <small>dotted line</small></span>
-      <span><i className={selected === "route-0" ? "legend-train" : "legend-tram"} aria-hidden="true" />{route?.service ?? "Public transport"} <small>solid line</small></span>
-    </div>
+    {showLegend && <JourneyRouteLegend selected={selected} route={route} />}
   </div>;
+}
+
+function JourneyRouteLegend({ selected, route }: { selected: RouteId; route?: DynamicRoute }) {
+  return <div className="journey-route-legend" aria-label="Route line legend">
+    <span><i className="legend-walk" aria-hidden="true" />Walk <small>dotted line</small></span>
+    <span><i className={selected === "route-0" ? "legend-train" : "legend-tram"} aria-hidden="true" />{route ? formatTransportService(route.transportMode, route.service) : "Public transport"} <small>solid line</small></span>
+  </div>;
+}
+
+function formatTransportService(mode: string, service: string) {
+  const cleanMode = mode.replace(/^Mixed\s*·\s*/i, "").trim();
+  const cleanService = service.trim();
+  if (!cleanMode || cleanMode === "Public transport") return cleanService || "Public transport";
+  if (cleanService.toLowerCase().startsWith(cleanMode.toLowerCase())) return cleanService;
+  return `${cleanMode} ${cleanService}`;
+}
+
+function formatTransportMode(mode: string) {
+  return mode.replace(/^Mixed\s*·\s*/i, "").trim() || "Public transport";
+}
+
+function formatServiceNumber(mode: string, service: string) {
+  const cleanMode = formatTransportMode(mode);
+  const cleanService = service.trim();
+  return cleanService.toLowerCase().startsWith(cleanMode.toLowerCase())
+    ? cleanService.slice(cleanMode.length).trim() || cleanService
+    : cleanService;
+}
+
+function condenseJourneyLegs(route?: DynamicRoute): DynamicRoute["legs"] {
+  const legs = route?.legs ?? [];
+  const firstTransit = legs.findIndex((leg) => leg.mode === "Transit");
+  if (firstTransit < 0) return legs;
+
+  let lastTransit = firstTransit;
+  for (let index = legs.length - 1; index >= firstTransit; index -= 1) {
+    if (legs[index].mode === "Transit") {
+      lastTransit = index;
+      break;
+    }
+  }
+
+  const firstWalk = legs.slice(0, firstTransit).filter((leg) => leg.mode === "Walk");
+  const transitSection = legs.slice(firstTransit, lastTransit + 1);
+  const transitLegs = transitSection.filter((leg) => leg.mode === "Transit");
+  const lastWalk = legs.slice(lastTransit + 1).filter((leg) => leg.mode === "Walk");
+  const service = route ? formatTransportService(route.transportMode, route.service) : "Public transport";
+  const transitDirections = transitLegs.map((leg) => leg.label).filter(Boolean).join(" → ");
+  const modeLabel = route?.transportMode.replace(/^Mixed\s*·\s*/i, "").trim() ?? "";
+  const transitLabel = transitDirections.toLowerCase().includes(route?.service.toLowerCase() ?? "")
+    ? transitDirections
+    : modeLabel && transitDirections.toLowerCase().startsWith(modeLabel.toLowerCase())
+      ? `${service}${transitDirections.slice(modeLabel.length)}`
+      : `${service} · ${transitDirections || "Continue towards destination"}`;
+
+  const condensed: DynamicRoute["legs"] = [];
+  if (firstWalk.length) condensed.push({ mode: "Walk", label: "Walk towards public transport", duration: totalLegDuration(firstWalk) });
+  condensed.push({
+    mode: "Transit",
+    label: transitLabel,
+    duration: totalLegDuration(transitSection),
+  });
+  if (lastWalk.length) condensed.push({ mode: "Walk", label: "Walk towards destination", duration: totalLegDuration(lastWalk) });
+  return condensed;
+}
+
+function totalLegDuration(legs: DynamicRoute["legs"]) {
+  const minutes = legs.reduce((sum, leg) => {
+    const match = leg.duration.match(/([\d.]+)\s*min/i);
+    return sum + (match ? Number(match[1]) : 0);
+  }, 0);
+  return minutes > 0 ? `${Math.round(minutes)} min` : "—";
 }
 
 function RealMap({ selected, crowdLimit, trainCount, tramCount, sensorReadings = EMPTY_SENSORS, compact = false, refuge = false, onSelect = () => {}, onRoutesResolved, origin, destination, journeyDirection = "to-work", travelTiming }: { selected: RouteId; crowdLimit: number; trainCount: number | null; tramCount: number | null; sensorReadings?: CrowdData["mapSensors"]; compact?: boolean; refuge?: boolean; onSelect?: (route: RouteId) => void; onRoutesResolved?: (routes: DynamicRoute[]) => void; origin?: string; destination?: string; journeyDirection?: JourneyDirection; travelTiming?: TravelTiming }) {
@@ -606,7 +723,7 @@ function getDataStateCopy(state: DataState) {
   if (state === "loading") return {
     summary: "Checking City sensors",
     shortReason: "Checking for a current observation",
-    explanation: "Calmer Commute is checking the City of Melbourne pedestrian feed.",
+    explanation: "Calm-panion is checking the City of Melbourne pedestrian feed.",
     safeResponse: "Wait for the check to finish or continue without crowd guidance.",
   };
   if (state === "stale") return {
@@ -634,6 +751,14 @@ function formatObservation(value: string | null) {
     day: "numeric",
     month: "short",
   }).format(date)}`;
+}
+
+function latestMatchedObservation(crowdData: CrowdData | null, sensorIds: number[]) {
+  const observations = (crowdData?.mapSensors ?? EMPTY_SENSORS)
+    .filter((sensor) => sensorIds.includes(sensor.id) && sensor.latestObservation)
+    .map((sensor) => sensor.latestObservation as string)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+  return observations[0] ?? crowdData?.latestObservation ?? null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -702,7 +827,6 @@ function rankRefuges(a: RefugeCandidate, b: RefugeCandidate) {
 }
 
 function QuietSpotScreen({ onBack, arrivalAddress, crowdData, crowdLimit }: { onBack: () => void; arrivalAddress: string; crowdData: CrowdData | null; crowdLimit: number }) {
-  const [navigationStarted, setNavigationStarted] = useState(false);
   const [selectedSpot, setSelectedSpot] = useState("");
   const [candidates, setCandidates] = useState<RefugeCandidate[]>([]);
   const [searchState, setSearchState] = useState<"loading" | "ready" | "unavailable">("loading");
@@ -802,37 +926,25 @@ function QuietSpotScreen({ onBack, arrivalAddress, crowdData, crowdLimit }: { on
   }, [arrivalAddress, crowdData, crowdLimit]);
   return (
     <section className="app-screen quiet-spot-view" aria-label="Quiet Spot Finder">
-      <ScreenHeader title="Nearby candidate refuges" subtitle={`Prioritised for lower supported pedestrian activity, then walking time, near ${arrivalAddress}.`} back={onBack} />
+      <ScreenHeader title="Nearby candidate refuges" subtitle="Calmer and closer public space recommended for you" back={onBack} />
 
       <div className="quiet-map-panel">
         <div className="real-map-card quiet-map-card">
           {selected ? <GeographicMap trainCount={null} tramCount={null} trainRisk="Unknown" tramRisk="Unknown" selected="tram" refuge quietSpot quietOrigin={arrivalAddress} quietDestination={selected.address} onSelect={() => {}} /> : <div className="route-map-state loading" role="status" aria-live="polite"><strong>{searchState === "loading" ? "Finding refuge options…" : "No supported nearby candidate could be returned for this arrival address."}</strong>{searchState === "loading" && <small>Checking nearby crowd and eligible public places…</small>}</div>}
-          <div className="real-map-caption"><span>Distance and time determined by Google Maps</span><strong>Walking route · live handoff</strong></div>
         </div>
       </div>
 
       <div className="quiet-detail-stack">
         <div className="refuge-options" role="radiogroup" aria-label="Candidate refuges">
-          {candidates.map((candidate) => <button key={candidate.name} role="radio" aria-checked={selectedSpot === candidate.name} className={selectedSpot === candidate.name ? "selected" : ""} onClick={() => { setSelectedSpot(candidate.name); setNavigationStarted(false); }}>
+          {candidates.map((candidate) => <button key={candidate.name} role="radio" aria-checked={selectedSpot === candidate.name} className={selectedSpot === candidate.name ? "selected" : ""} onClick={() => setSelectedSpot(candidate.name)}>
             <span>
               <strong>{candidate.name}</strong>
-              <small>{candidate.type}</small>
-              <small>{candidate.sensorId === null ? "Nearby crowd unknown — no usable sensor within 150 m" : `Nearby crowd: ${candidate.crowdRisk} · ${candidate.crowdCount} people/min`}</small>
-              {candidate.sensorId !== null && <small>Sensor {candidate.sensorId} · {candidate.sensorDistance} m away · {formatObservation(candidate.sensorObservation)}</small>}
+              <small className="refuge-type">{candidate.type}</small>
+              <small className="refuge-address">{candidate.address}</small>
             </span>
             <b>{candidate.walkMinutes === null && candidate.walk === "Calculating route…" ? "Calculating walking route…" : candidate.walk}</b>
           </button>)}
         </div>
-        {selected ? <><article className="availability-card">
-          <span>Candidate refuge</span>
-          <h2>{selected.name}</h2>
-          <p>{selected.address}. Lower nearby pedestrian activity is prioritised because refuge support is intended for a traveller already experiencing crowd-related sensory overload.</p>
-        </article>
-
-        <p className="data-boundary-note">Pedestrian activity is a crowd proxy only. Actual noise, quietness and sensory suitability are not verified.</p>
-        <button className="primary-action" onClick={() => setNavigationStarted(true)}>{navigationStarted ? "Directions ready" : selected.walkMinutes ? `Start ${selected.walk} walk` : "Open walking directions"}</button>
-        {navigationStarted && <p className="quiet-navigation-status" role="status"><span aria-hidden="true">✓</span> Directions are ready. You can return to the journey at any time.</p>}
-        </> : <article className="journey-data-unavailable" role="status" aria-live="polite"><strong>{searchState === "loading" ? "Finding refuge options…" : "Candidate refuge search unavailable"}</strong><p>{searchState === "loading" ? "Checking nearby crowd and eligible parks, libraries and non-religious public spaces. Walking information will appear as each candidate is assessed." : "No eligible park, library or non-religious public-space candidate was returned near this arrival. No fixed refuge is being substituted."}</p></article>}
       </div>
     </section>
   );

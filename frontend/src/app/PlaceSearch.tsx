@@ -7,6 +7,7 @@ import { loadGoogleMaps } from "./GeographicMap";
 
 type Props = {
   ariaLabel: string;
+  placeholder?: string;
   value: string;
   onChange: (value: string) => void;
 };
@@ -27,7 +28,7 @@ declare global {
 }
 /* eslint-enable @typescript-eslint/no-namespace */
 
-export default function PlaceSearch({ ariaLabel, value, onChange }: Props) {
+export default function PlaceSearch({ ariaLabel, placeholder = "Search a Melbourne address", value, onChange }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   const [status, setStatus] = useState<"loading" | "ready" | "fallback">("loading");
@@ -56,7 +57,8 @@ export default function PlaceSearch({ ariaLabel, value, onChange }: Props) {
         });
         autocomplete = autocompleteInstance;
         autocompleteInstance.setAttribute("aria-label", ariaLabel);
-        autocompleteInstance.setAttribute("placeholder", "Search a Melbourne address");
+        autocompleteInstance.setAttribute("placeholder", placeholder);
+        autocompleteInstance.classList.add("calm-place-autocomplete");
 
         listener = async (event: Event) => {
           const prediction = (event as unknown as { placePrediction?: { toPlace: () => unknown } }).placePrediction;
@@ -84,7 +86,7 @@ export default function PlaceSearch({ ariaLabel, value, onChange }: Props) {
       if (autocomplete && listener) autocomplete.removeEventListener("gmp-select", listener);
       if (hostNode) hostNode.replaceChildren();
     };
-  }, [ariaLabel]);
+  }, [ariaLabel, placeholder]);
 
   useEffect(() => {
     const hostNode = host.current;
@@ -95,13 +97,27 @@ export default function PlaceSearch({ ariaLabel, value, onChange }: Props) {
   }, [status, value]);
 
   if (status === "fallback") {
-    return <textarea aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)} rows={2} />;
+    return (
+      <div className="place-search-shell fallback">
+        <SearchIcon />
+        <textarea aria-label={ariaLabel} placeholder={placeholder} value={value} onChange={(event) => onChange(event.target.value)} rows={1} />
+      </div>
+    );
   }
 
   return (
     <div className="place-search-shell">
       <div ref={host} className="place-search-host" />
-      {status === "loading" && <div className="place-search-loading" aria-live="polite">Connecting Google address search…</div>}
+      {status === "loading" && <div className="place-search-loading" aria-live="polite">Checking your journey...</div>}
     </div>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg className="place-search-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+      <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2" />
+      <path d="m16 16 4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
   );
 }

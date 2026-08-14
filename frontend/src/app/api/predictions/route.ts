@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
   upstream.searchParams.set("sensor_id", sensorId);
   const crowdThreshold = request.nextUrl.searchParams.get("crowd_threshold");
   if (crowdThreshold) upstream.searchParams.set("crowd_threshold", crowdThreshold);
+  const scenario = request.nextUrl.searchParams.get("scenario");
+  if (scenario) upstream.searchParams.set("scenario", scenario);
 
   try {
     const response = await fetch(upstream, {

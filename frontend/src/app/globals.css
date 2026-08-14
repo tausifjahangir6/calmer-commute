@@ -671,3 +671,891 @@ h1, h2, p { margin-top: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+/* --------------------------------------------------------------------------
+   Calm-panion visual transplant (light theme only)
+   These selectors intentionally carry extra specificity because layout.tsx
+   imports refinements.css after this file in the supplied project.
+   -------------------------------------------------------------------------- */
+
+:root {
+  --ink: #153f37;
+  --muted: #55736d;
+  --stage: #f7f4eb;
+  --paper: #f7f4eb;
+  --surface: #fffefa;
+  --line: #dce5df;
+  --soft: #f1f5f2;
+  --sage: #347e6f;
+  --sage-dark: #276a5c;
+  --sage-soft: #e4f0eb;
+  --warm: #b1743f;
+  --warm-soft: #fbf0e5;
+}
+
+html { background: var(--paper); }
+body {
+  min-width: 320px;
+  overflow-x: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+}
+
+.prototype-stage {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 10% 15%, rgba(218, 240, 230, .72), transparent 25%),
+    radial-gradient(circle at 91% 85%, rgba(255, 243, 198, .42), transparent 28%),
+    var(--paper);
+}
+
+.prototype-stage::before,
+.prototype-stage::after {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  width: 490px;
+  height: 490px;
+  border: 1px solid rgba(45, 111, 95, .09);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.prototype-stage::before { top: -345px; right: 185px; }
+.prototype-stage::after { bottom: -425px; left: 95px; }
+
+.prototype-stage .site-header {
+  position: relative;
+  top: auto;
+  min-height: 108px;
+  padding: 0 max(64px, calc((100vw - 1660px) / 2));
+  border-color: rgba(40, 93, 80, .12);
+  background: rgba(247, 244, 235, .76);
+  backdrop-filter: blur(12px);
+}
+
+.prototype-stage .brand-lockup { gap: 18px; }
+.prototype-stage .brand-mark {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--sage);
+  border-radius: 50%;
+  background: transparent;
+}
+.prototype-stage .brand-mark::after {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--sage);
+  transform: translate(-50%, -50%);
+}
+.prototype-stage .brand-copy { display: block; }
+.prototype-stage .brand-copy strong {
+  color: #123d35;
+  font-size: 30px;
+  font-weight: 760;
+  letter-spacing: -.035em;
+}
+.prototype-stage .header-location {
+  display: inline-flex;
+  align-items: center;
+  gap: 13px;
+  color: #55736d;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1;
+}
+.prototype-stage .header-location i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #75ad9d;
+}
+
+.prototype-stage .web-shell { min-height: 0; }
+
+.prototype-stage .app-screen {
+  color: var(--ink);
+  background: transparent;
+}
+
+/* Landing page */
+.prototype-stage .plan-view {
+  width: min(1660px, calc(100% - 128px));
+  min-height: calc(100vh - 182px);
+  display: grid;
+  grid-template-columns: minmax(0, 820px) minmax(560px, 670px);
+  grid-template-rows: 1fr;
+  justify-content: space-between;
+  align-items: center;
+  gap: 110px;
+  margin: 0 auto;
+  padding: 38px 0 46px;
+}
+
+.plan-introduction {
+  min-width: 0;
+  align-self: center;
+  transform: translateY(14px);
+}
+.plan-kicker {
+  margin: 0 0 30px;
+  color: var(--sage);
+  font-size: 25px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: .015em;
+}
+.plan-introduction h1,
+.planner-heading h2,
+.prototype-stage .screen-header h1 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+}
+.plan-introduction h1 {
+  margin: 0;
+  color: #113d35;
+  font-size: clamp(78px, 6.2vw, 126px);
+  line-height: 1.02;
+  letter-spacing: -.065em;
+}
+.plan-description {
+  max-width: 770px;
+  margin: 54px 0 0;
+  color: #587771;
+  font-size: 26px;
+  line-height: 1.75;
+  letter-spacing: -.01em;
+}
+
+.prototype-stage .planner-panel {
+  width: 100%;
+  align-self: center;
+  padding: 58px 60px 60px;
+  border: 1px solid rgba(41, 88, 76, .10);
+  border-radius: 40px;
+  background: rgba(255, 254, 250, .93);
+  box-shadow: 0 28px 68px rgba(38, 60, 52, .14);
+  backdrop-filter: blur(16px);
+  transform: translateY(-12px);
+}
+.planner-heading p {
+  margin: 0 0 26px;
+  color: var(--sage);
+  font-size: 27px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: .17em;
+}
+.planner-heading h2 {
+  margin: 0 0 42px;
+  color: #153f37;
+  font-size: 54px;
+  line-height: 1.08;
+  letter-spacing: -.045em;
+}
+
+.prototype-stage .plan-view .location-card {
+  display: grid;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.prototype-stage .plan-view .location-card label {
+  gap: 12px;
+  padding: 0;
+}
+.prototype-stage .plan-view .location-card label > span {
+  padding-left: 4px;
+  color: #527069;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 750;
+}
+.prototype-stage .plan-view .location-connector {
+  position: relative;
+  width: 24px;
+  height: 72px;
+  margin: 0 0 0 24px;
+  background: transparent;
+}
+.prototype-stage .plan-view .location-connector i {
+  display: block;
+  top: 17px;
+  left: 2px;
+  width: 2px;
+  height: 42px;
+  background: repeating-linear-gradient(to bottom, #95c9ba 0 4px, transparent 4px 8px);
+}
+.prototype-stage .plan-view .location-connector span { display: none; }
+
+.place-search-shell {
+  position: relative;
+  min-height: 54px;
+  overflow: visible;
+}
+.place-search-icon {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 15px;
+  width: 23px;
+  height: 23px;
+  color: #626c69;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.place-search-host { min-height: 54px; }
+.place-search-host gmp-place-autocomplete {
+  width: 100%;
+  min-height: 54px;
+  display: block;
+  padding-left: 0;
+  border: 1px solid #e3e9e5;
+  border-radius: 3px;
+  background: #f4f6f5;
+  color: #252d2b;
+  font-size: 19px;
+  --gmpx-color-surface: #f4f6f5;
+  --gmpx-color-on-surface: #252d2b;
+  --gmpx-font-family-base: Inter, "Segoe UI", Arial, sans-serif;
+}
+.place-search-shell.fallback textarea,
+.prototype-stage .plan-view .location-card textarea {
+  width: 100%;
+  min-height: 54px;
+  height: 54px;
+  padding: 14px 16px 14px 50px;
+  border: 1px solid #e3e9e5;
+  border-radius: 3px;
+  background: #f4f6f5;
+  color: #252d2b;
+  font-size: 19px;
+  font-weight: 450;
+  line-height: 1.25;
+  resize: none;
+}
+.place-search-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  min-height: 54px;
+  padding: 15px 16px 14px 16px;
+  border: 1px solid #e3e9e5;
+  border-radius: 3px;
+  background: #f4f6f5;
+  font-size: 15px;
+}
+
+.prototype-stage .planner-panel > .primary-action {
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  margin-top: 40px;
+  border-radius: 17px;
+  background: #347e6f;
+  font-size: 22px;
+  box-shadow: 0 18px 34px rgba(39, 106, 92, .19);
+}
+.prototype-stage .planner-panel > .primary-action span { font-size: 22px; font-weight: 400; }
+
+.prototype-stage .site-footer {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: min(1660px, calc(100% - 128px));
+  min-height: 74px;
+  display: grid;
+  grid-template-columns: minmax(0, 820px) minmax(560px, 670px);
+  align-items: center;
+  justify-content: space-between;
+  gap: 110px;
+  margin: 0 auto;
+  transform: translateX(-50%);
+  border-top: 1px solid rgba(40, 93, 80, .12);
+  color: #55736d;
+  font-size: 15px;
+}
+.prototype-stage .site-footer span:first-child {
+  grid-column: 1;
+  justify-self: start;
+  text-align: left;
+}
+.prototype-stage .site-footer span:last-child {
+  grid-column: 2;
+  justify-self: end;
+  text-align: right;
+}
+
+/* Shared inner-page header */
+.prototype-stage .screen-header { margin: 0; }
+.prototype-stage .screen-header .header-row { min-height: 24px; margin: 0 0 30px; }
+.prototype-stage .back-control {
+  min-height: 28px;
+  color: var(--sage);
+  font-size: 14px;
+  font-weight: 800;
+}
+.prototype-stage .back-control span { font-size: 22px; }
+.prototype-stage .screen-header h1 {
+  max-width: none;
+  margin: 0 0 10px;
+  color: #153f37;
+  font-size: 50px;
+  line-height: 1.08;
+  letter-spacing: -.045em;
+}
+.prototype-stage .screen-header > p {
+  max-width: none;
+  color: #5c7771;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* Route comparison page */
+.prototype-stage .routes-view {
+  width: min(1150px, calc(100% - 48px));
+  min-height: calc(100vh - 108px);
+  grid-template-columns: 550px 570px;
+  grid-template-rows: auto auto auto auto auto;
+  justify-content: center;
+  gap: 14px 30px;
+  padding: 70px 0 90px;
+}
+.prototype-stage .routes-view .screen-header {
+  grid-column: 1 / -1;
+  margin-bottom: 28px;
+}
+.prototype-stage .routes-view .screen-header h1 { font-size: 46px; }
+.prototype-stage .routes-view .route-threshold {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 145px;
+  gap: 20px;
+  padding: 23px 22px;
+  border-radius: 20px;
+  background: rgba(255, 254, 250, .94);
+}
+.prototype-stage .routes-view .route-threshold > div { transform: translateY(-7px); }
+.prototype-stage .route-threshold strong { font-size: 14px; }
+.prototype-stage .route-threshold span { font-size: 15px; font-weight: 750; }
+.prototype-stage .route-threshold small {
+  width: 100%;
+  max-width: 100%;
+  font-size: 14px;
+  line-height: 1.4;
+  letter-spacing: -.015em;
+  white-space: nowrap;
+}
+.prototype-stage .route-threshold input { height: 6px; margin: 0; }
+
+.prototype-stage .routes-view .route-decision-stack {
+  grid-column: 1;
+  grid-row: 3;
+  gap: 14px;
+}
+.prototype-stage .route-decision-stack > div { display: block !important; }
+.prototype-stage .route-decision-stack .no-low-route + div { margin-top: -6px; }
+.prototype-stage .route-decision-stack .hotspot-avoidance {
+  width: 100%;
+  min-height: 96px;
+  margin: 0;
+  padding: 14px 18px;
+  border-radius: 20px;
+  background: rgba(255, 254, 250, .94);
+}
+.prototype-stage .hotspot-heading { gap: 11px; }
+.prototype-stage .hotspot-heading > span {
+  width: 32px;
+  height: 32px;
+  font-size: 13px;
+}
+.prototype-stage .hotspot-heading small { font-size: 10px; letter-spacing: .1em; }
+.prototype-stage .hotspot-heading strong { font-size: 14px; line-height: 1.3; }
+.prototype-stage .route-decision-stack .hotspot-avoidance > p { margin: 5px 0 0; font-size: 11px; }
+.prototype-stage .route-decision-stack .avoidance-result,
+.prototype-stage .route-decision-stack .explicit-tradeoff { display: none; }
+
+.prototype-stage .route-decision-stack .no-low-route {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid #e8c9ae;
+  border-radius: 15px;
+  background: #fff3e8;
+  color: #6f5743;
+}
+.prototype-stage .route-decision-stack .no-low-route strong { font-size: 13px; line-height: 1.4; }
+.prototype-stage .route-decision-stack .no-low-route span { font-size: 13px; line-height: 1.5; }
+.prototype-stage .routes-view .route-decision-stack > .primary-action {
+  min-height: 54px;
+  border: 0;
+  border-radius: 15px;
+  background: #347e6f;
+  font-size: 18px;
+}
+
+.prototype-stage .routes-view .route-cards {
+  grid-column: 1;
+  grid-row: 4;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 10px;
+}
+.prototype-stage .route-card {
+  position: relative;
+  min-height: 292px;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 18px 18px;
+  overflow: visible;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(255, 254, 250, .94);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.prototype-stage .route-card.selected {
+  padding: 21px 17px 17px;
+  border: 2px solid var(--sage);
+  background: rgba(246, 251, 248, .96);
+}
+.prototype-stage .route-rank { font-size: 13px; font-weight: 750; }
+.prototype-stage .route-labels {
+  min-height: 27px;
+  display: flex;
+  align-items: center;
+  margin: 9px 0 4px;
+}
+.prototype-stage .recommended {
+  display: inline-flex;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #dfeee8;
+  color: #286858;
+  font-size: 9px;
+  font-weight: 800;
+}
+.prototype-stage .route-radio { top: 17px; right: 16px; }
+.prototype-stage .route-card .load-badge {
+  gap: 10px;
+  justify-content: center;
+  margin: 0 0 18px;
+  color: #183f37;
+  font-size: 24px;
+  line-height: 1.15;
+  font-weight: 600;
+}
+.prototype-stage .route-card .load-badge > span {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  margin-right: 0;
+  font-size: 12px;
+}
+.prototype-stage .route-card .route-duration {
+  width: 100%;
+  display: block;
+  color: #183f37;
+  font-size: 22px;
+  line-height: 1.05;
+  font-weight: 400;
+  text-align: center;
+}
+.prototype-stage .route-card .route-core {
+  min-height: 0;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  margin-top: 0;
+  text-align: center;
+}
+.prototype-stage .route-service-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+.prototype-stage .route-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 27px;
+  padding: 5px 10px;
+  border: 1px solid #cbded7;
+  border-radius: 999px;
+  background: #eef3f1;
+  color: #234f43;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.prototype-stage .route-card h2 {
+  margin: 0;
+  color: #57726c;
+  font-size: 17px;
+  line-height: 1.2;
+  font-weight: 500;
+  text-align: center;
+}
+.prototype-stage .route-card details { margin-top: auto; padding-top: 18px; }
+.prototype-stage .route-card summary {
+  color: var(--sage-dark);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+  list-style: none;
+}
+.prototype-stage .route-card summary::-webkit-details-marker { display: none; }
+.prototype-stage .route-card summary::before { content: "› "; }
+.prototype-stage .route-card details[open] summary::before { content: "⌄ "; }
+.prototype-stage .route-detail-content {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.prototype-stage .route-detail-content > div { display: grid; gap: 4px; }
+.prototype-stage .route-detail-content > div + div {
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+.prototype-stage .route-detail-content strong { font-size: 10px; }
+.prototype-stage .route-detail-content p { color: var(--muted); font-size: 10px; line-height: 1.5; }
+
+.prototype-stage .routes-view .route-preview {
+  grid-column: 2;
+  grid-row: 2 / span 5;
+  top: 28px;
+  border-radius: 24px;
+  background: rgba(255, 254, 250, .95);
+  box-shadow: 0 22px 55px rgba(36, 57, 50, .12);
+}
+.prototype-stage .routes-view .route-preview-heading {
+  min-height: 57px;
+  padding: 20px 24px 16px;
+}
+.prototype-stage .routes-view .route-preview-heading span {
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: .08em;
+}
+.prototype-stage .routes-view .route-preview .google-map-panel,
+.prototype-stage .routes-view .route-preview .google-map-frame { min-height: 500px; }
+.prototype-stage .routes-view .route-preview .geo-map { height: 500px; }
+.prototype-stage .routes-view .route-preview > .journey-route-legend {
+  margin: 0;
+  padding: 15px 24px;
+  border-top: 0;
+  border-bottom: 1px solid var(--line);
+}
+.prototype-stage .routes-view .journey-legs li {
+  min-height: 68px;
+  grid-template-columns: 34px 1fr auto;
+  gap: 13px;
+  padding: 10px 20px;
+}
+.prototype-stage .routes-view .route-preview .journey-legs { padding: 0 24px 8px; }
+.prototype-stage .routes-view .journey-legs .leg-number {
+  width: 32px;
+  height: 32px;
+  font-size: 11px;
+}
+.prototype-stage .routes-view .journey-legs b { font-size: 12px; }
+.prototype-stage .routes-view .journey-legs strong { font-size: 15px; line-height: 1.4; }
+.prototype-stage .routes-view .journey-legs small { font-size: 10px; line-height: 1.4; }
+.prototype-stage .routes-view .journey-legs time { font-size: 13px; }
+.prototype-stage .routes-view .journey-route-legend > span { font-size: 12px; }
+.prototype-stage .routes-view .journey-route-legend small { font-size: 10px; }
+.prototype-stage .routes-view .sensor-map-legend,
+.prototype-stage .journey-view .sensor-map-legend {
+  gap: 10px 16px;
+  padding: 11px 16px;
+  border-radius: 16px;
+  font-size: 15px;
+}
+.prototype-stage .routes-view .sensor-map-legend span,
+.prototype-stage .journey-view .sensor-map-legend span { gap: 8px; }
+.prototype-stage .routes-view .sensor-map-legend i,
+.prototype-stage .journey-view .sensor-map-legend i { width: 14px; height: 14px; }
+.prototype-stage .routes-view > .recommendation-withheld {
+  grid-column: 1;
+  grid-row: 5;
+  margin: 0;
+}
+
+/* Journey and refuge pages retain all existing logic with the same skin. */
+.prototype-stage .journey-view,
+.prototype-stage .quiet-spot-view {
+  width: min(1120px, calc(100% - 56px));
+  min-height: calc(100vh - 108px);
+  padding-top: 58px;
+}
+.prototype-stage .quiet-spot-view {
+  width: min(1240px, calc(100% - 56px));
+  grid-template-columns: minmax(0, 1.3fr) minmax(430px, 1fr);
+  gap: 22px 30px;
+}
+.prototype-stage .quiet-map-panel .real-map-card,
+.prototype-stage .quiet-map-panel .geo-map-wrap,
+.prototype-stage .quiet-map-panel .google-live-map {
+  height: 332px;
+  min-height: 332px;
+}
+.prototype-stage .journey-view .real-map-card,
+.prototype-stage .journey-details-column > *,
+.prototype-stage .quiet-map-panel .real-map-card,
+.prototype-stage .quiet-detail-stack > * {
+  border-color: rgba(40, 93, 80, .13);
+  background-color: rgba(255, 254, 250, .94);
+  box-shadow: 0 16px 42px rgba(36, 57, 50, .08);
+}
+
+/* Journey page: keep the route key physically attached to the map. */
+.prototype-stage .journey-map-column {
+  grid-column: 1;
+  grid-row: 2;
+  display: grid;
+  align-self: start;
+}
+.prototype-stage .journey-map-column .real-map-card {
+  grid-column: auto;
+  grid-row: auto;
+  margin: 0;
+  border-radius: 21px 21px 0 0;
+}
+.prototype-stage .journey-map-column .google-map-panel,
+.prototype-stage .journey-map-column .google-map-frame,
+.prototype-stage .journey-map-column .google-live-map,
+.prototype-stage .journey-map-column .real-map-card .geo-map {
+  height: 560px;
+  min-height: 560px;
+}
+.prototype-stage .journey-map-column > .journey-route-legend {
+  margin: 0;
+  padding: 17px 22px;
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 21px 21px;
+  background: rgba(255, 254, 250, .94);
+  box-shadow: 0 16px 42px rgba(36, 57, 50, .08);
+}
+.prototype-stage .journey-map-column > .journey-route-legend > span { font-size: 13px; }
+.prototype-stage .journey-map-column > .journey-route-legend small { font-size: 11px; }
+.prototype-stage .journey-map-column > .journey-route-legend i { width: 42px; }
+
+/* Journey-page directions are deliberately larger than the compact preview. */
+.prototype-stage .journey-details-column .journey-legs li {
+  min-height: 78px;
+  grid-template-columns: 36px 1fr auto;
+  gap: 15px;
+  padding: 13px 22px;
+}
+.prototype-stage .journey-details-column .journey-legs .leg-number {
+  width: 34px;
+  height: 34px;
+  font-size: 12px;
+}
+.prototype-stage .journey-details-column .journey-legs b { font-size: 13px; }
+.prototype-stage .journey-details-column .journey-legs strong { font-size: 16px; line-height: 1.38; }
+.prototype-stage .journey-details-column .journey-legs small { font-size: 11px; line-height: 1.45; }
+.prototype-stage .journey-details-column .journey-legs time { font-size: 14px; }
+.prototype-stage .journey-details-column .forecast-evidence { padding-block: 22px; }
+
+/* Refuge results: one compact, decision-ready list without secondary banners. */
+.prototype-stage .quiet-detail-stack { gap: 0; }
+.prototype-stage .refuge-options {
+  display: grid;
+  gap: 10px;
+  background: transparent;
+  box-shadow: none;
+}
+.prototype-stage .refuge-options button {
+  width: 100%;
+  min-height: 104px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 17px 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 254, 250, .94);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+.prototype-stage .refuge-options button.selected {
+  border: 2px solid var(--sage);
+  background: rgba(232, 243, 238, .95);
+}
+.prototype-stage .refuge-options button > span { display: grid; gap: 4px; }
+.prototype-stage .refuge-options button strong { font-size: 18px; line-height: 1.3; }
+.prototype-stage .refuge-options button small { color: var(--muted); font-size: 14px; line-height: 1.35; }
+.prototype-stage .refuge-options button .refuge-address {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #71847f;
+  font-size: 10px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prototype-stage .refuge-options button > b {
+  min-width: 72px;
+  color: var(--sage-dark);
+  font-size: 22px;
+  line-height: 1.1;
+  text-align: right;
+}
+
+@media (max-width: 1180px) {
+  .prototype-stage .site-header { padding-inline: 42px; }
+  .prototype-stage .plan-view {
+    width: min(1040px, calc(100% - 84px));
+    grid-template-columns: minmax(0, 1fr) minmax(500px, 1fr);
+    gap: 58px;
+  }
+  .plan-introduction h1 { font-size: clamp(68px, 7.2vw, 92px); }
+  .plan-kicker { font-size: 18px; }
+  .plan-description { font-size: 19px; }
+  .prototype-stage .planner-panel { padding: 45px; }
+  .planner-heading p { font-size: 20px; }
+  .planner-heading h2 { font-size: 43px; }
+  .prototype-stage .site-footer {
+    width: min(1040px, calc(100% - 84px));
+    grid-template-columns: minmax(0, 1fr) minmax(500px, 1fr);
+    gap: 58px;
+  }
+}
+
+@media (max-width: 1210px) {
+  .prototype-stage .routes-view {
+    width: min(700px, calc(100% - 48px));
+    display: block;
+  }
+  .prototype-stage .routes-view .screen-header,
+  .prototype-stage .routes-view .route-threshold,
+  .prototype-stage .routes-view .route-decision-stack,
+  .prototype-stage .routes-view .route-cards,
+  .prototype-stage .routes-view .route-preview { margin-bottom: 18px; }
+  .prototype-stage .routes-view .route-preview { position: relative; top: auto; }
+  .prototype-stage .routes-view .route-cards { display: grid; }
+}
+
+@media (max-width: 960px) {
+  .prototype-stage .routes-view {
+    width: min(700px, calc(100% - 48px));
+    display: block;
+  }
+  .prototype-stage .routes-view .screen-header,
+  .prototype-stage .routes-view .route-threshold,
+  .prototype-stage .routes-view .route-decision-stack,
+  .prototype-stage .routes-view .route-cards,
+  .prototype-stage .routes-view .route-preview { margin-bottom: 18px; }
+  .prototype-stage .routes-view .route-preview { position: relative; top: auto; }
+  .prototype-stage .routes-view .route-cards { display: grid; }
+  .prototype-stage .journey-view,
+  .prototype-stage .quiet-spot-view { display: block; }
+  .prototype-stage .journey-view > *,
+  .prototype-stage .quiet-spot-view > * { margin-bottom: 18px; }
+  .prototype-stage .journey-map-column .google-map-panel,
+  .prototype-stage .journey-map-column .google-map-frame,
+  .prototype-stage .journey-map-column .google-live-map,
+  .prototype-stage .journey-map-column .real-map-card .geo-map {
+    height: 460px;
+    min-height: 460px;
+  }
+}
+
+@media (max-width: 820px) {
+  .prototype-stage .site-header {
+    min-height: 82px;
+    padding-inline: 24px;
+  }
+  .prototype-stage .brand-mark { width: 33px; height: 33px; border-width: 2px; }
+  .prototype-stage .brand-mark::after { width: 11px; height: 11px; }
+  .prototype-stage .brand-copy strong { font-size: 25px; }
+  .prototype-stage .header-location { gap: 9px; font-size: 14px; }
+  .prototype-stage .header-location i { width: 6px; height: 6px; }
+  .prototype-stage .plan-view {
+    width: min(620px, calc(100% - 40px));
+    min-height: auto;
+    display: block;
+    padding: 58px 0 60px;
+  }
+  .plan-introduction { transform: none; }
+  .plan-kicker { margin-bottom: 18px; font-size: 15px; }
+  .plan-introduction h1 { font-size: clamp(58px, 15vw, 88px); }
+  .plan-description { margin-top: 28px; font-size: 17px; line-height: 1.6; }
+  .prototype-stage .planner-panel { margin-top: 48px; padding: 36px 30px; transform: none; }
+  .planner-heading p { margin-bottom: 18px; font-size: 16px; }
+  .planner-heading h2 { margin-bottom: 30px; font-size: 39px; }
+  .prototype-stage .site-footer {
+    position: static;
+    left: auto;
+    bottom: auto;
+    width: calc(100% - 48px);
+    min-height: 112px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 8px;
+    margin-inline: auto;
+    transform: none;
+    font-size: 13px;
+  }
+  .prototype-stage .site-footer span:last-child {
+    align-self: flex-end;
+    text-align: right;
+  }
+}
+
+@media (max-width: 560px) {
+  .prototype-stage .site-header { padding-inline: 16px; }
+  .prototype-stage .brand-lockup { gap: 10px; }
+  .prototype-stage .brand-mark { width: 30px; height: 30px; border-width: 2px; }
+  .prototype-stage .brand-mark::after { width: 9px; height: 9px; }
+  .prototype-stage .brand-copy strong { font-size: 21px; }
+  .prototype-stage .header-location { gap: 6px; font-size: 12px; }
+  .prototype-stage .header-location i { width: 5px; height: 5px; }
+  .prototype-stage .routes-view,
+  .prototype-stage .journey-view,
+  .prototype-stage .quiet-spot-view { width: calc(100% - 32px); padding-top: 38px; }
+  .prototype-stage .screen-header h1 { font-size: 38px; }
+  .prototype-stage .routes-view .route-cards { grid-template-columns: 1fr; }
+  .prototype-stage .route-card { min-height: 270px; }
+  .prototype-stage .routes-view .route-preview .google-map-panel,
+  .prototype-stage .routes-view .route-preview .google-map-frame { min-height: 390px; }
+  .prototype-stage .routes-view .route-preview .geo-map { height: 390px; }
+  .prototype-stage .journey-map-column .google-map-panel,
+  .prototype-stage .journey-map-column .google-map-frame,
+  .prototype-stage .journey-map-column .google-live-map,
+  .prototype-stage .journey-map-column .real-map-card .geo-map {
+    height: 360px;
+    min-height: 360px;
+  }
+  .prototype-stage .planner-panel { padding: 30px 22px; border-radius: 28px; }
+  .planner-heading h2 { font-size: 34px; }
+  .prototype-stage .plan-view .location-connector { height: 54px; }
+  .prototype-stage .planner-panel > .primary-action { min-height: 60px; font-size: 17px; }
+}
