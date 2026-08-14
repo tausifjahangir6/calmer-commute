@@ -266,16 +266,14 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
         <button className="primary-action" onClick={onContinue} disabled={!selectedDynamic}>{selectedDynamic ? "Start journey" : "Checking your journey..."}</button>
         {noLowRoute && <p className="no-low-route" role="status"><strong>No route is within your crowd limit right now.</strong><span>You can wait and check again, or try different locations.</span></p>}
         {displayedHotspotRoute && hotspotSensor && hotspotMeta && (
-          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-            <article className="hotspot-avoidance" aria-live="polite" style={{ flex: "1 1 260px" }}>
-              <div className="hotspot-heading"><span aria-hidden="true">!</span><div><small>BUSY AREA AHEAD</small><strong>{formatSensorName(hotspotMeta.name)}</strong></div></div>
-              <p><b>High crowd · {formatObservation(hotspotSensor.latestObservation)}</b></p>
-              {verifiedAvoidance && recommended ? <>
-                <div className="avoidance-result"><span aria-hidden="true">✓</span><p><strong>{recommended.service} recommended</strong><small>Avoids this supported High-crowd corridor.</small></p></div>
-                <p className="explicit-tradeoff"><strong>Trade-off:</strong> {recommended.durationMinutes === displayedHotspotRoute.route.durationMinutes ? "same journey time" : `${Math.abs(recommended.durationMinutes - displayedHotspotRoute.route.durationMinutes)} min ${recommended.durationMinutes > displayedHotspotRoute.route.durationMinutes ? "longer" : "shorter"}`} · {recommended.walkingMinutes === displayedHotspotRoute.route.walkingMinutes ? "same walking time" : `${Math.abs(recommended.walkingMinutes - displayedHotspotRoute.route.walkingMinutes)} min ${recommended.walkingMinutes > displayedHotspotRoute.route.walkingMinutes ? "more" : "less"} walking`}</p>
-              </> : <p className="explicit-tradeoff"><strong>No verified lower-crowd alternative avoids this hotspot right now.</strong></p>}
-            </article>
-          </div>
+          <article className="hotspot-avoidance" aria-live="polite">
+            <div className="hotspot-heading"><span aria-hidden="true">!</span><div><small>BUSY AREA AHEAD</small><strong>{formatSensorName(hotspotMeta.name)}</strong></div></div>
+            <p><b>High crowd · {formatObservation(hotspotSensor.latestObservation)}</b></p>
+            {verifiedAvoidance && recommended ? <>
+              <div className="avoidance-result"><span aria-hidden="true">✓</span><p><strong>{recommended.service} recommended</strong><small>Avoids this supported High-crowd corridor.</small></p></div>
+              <p className="explicit-tradeoff"><strong>Trade-off:</strong> {recommended.durationMinutes === displayedHotspotRoute.route.durationMinutes ? "same journey time" : `${Math.abs(recommended.durationMinutes - displayedHotspotRoute.route.durationMinutes)} min ${recommended.durationMinutes > displayedHotspotRoute.route.durationMinutes ? "longer" : "shorter"}`} · {recommended.walkingMinutes === displayedHotspotRoute.route.walkingMinutes ? "same walking time" : `${Math.abs(recommended.walkingMinutes - displayedHotspotRoute.route.walkingMinutes)} min ${recommended.walkingMinutes > displayedHotspotRoute.route.walkingMinutes ? "more" : "less"} walking`}</p>
+            </> : <p className="explicit-tradeoff"><strong>No verified lower-crowd alternative avoids this hotspot right now.</strong></p>}
+          </article>
         )}
         {!routeForecastPending && (
           <HotspotForecastCard forecast={selectedForecast} sensorName={forecastSensorName} />
@@ -356,7 +354,7 @@ function HotspotForecastCard({ forecast, sensorName }: { forecast: PredictionRes
   }
   const count = forecast.predicted_count_per_minute;
   return (
-    <article className="hotspot-avoidance" aria-live="polite" style={{ flex: "1 1 260px" }}>
+    <article className="hotspot-avoidance" aria-live="polite">
       <div className="hotspot-heading"><span aria-hidden="true">⏱</span><div><small>Forecast alert</small><strong>{sensorName}</strong></div></div>
       <p><b>{count} people/min expected</b> in {forecast.forecast_horizon_minutes} min · {forecast.crowd_level}</p>
       <p className="explicit-tradeoff">

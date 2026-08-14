@@ -1063,8 +1063,7 @@ body {
   grid-row: 3;
   gap: 14px;
 }
-.prototype-stage .route-decision-stack > div { display: block !important; }
-.prototype-stage .route-decision-stack .no-low-route + div { margin-top: -6px; }
+.prototype-stage .route-decision-stack .no-low-route + .hotspot-avoidance { margin-top: -6px; }
 .prototype-stage .route-decision-stack .hotspot-avoidance {
   width: 100%;
   min-height: 96px;
