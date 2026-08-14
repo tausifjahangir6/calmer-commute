@@ -1,4 +1,4 @@
-# Calmer Commute
+# Calm-panion
 
 A crowd-aware journey companion for sensory-sensitive commuters in Melbourne’s CBD.
 
