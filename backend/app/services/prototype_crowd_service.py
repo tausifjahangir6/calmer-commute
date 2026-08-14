@@ -1,5 +1,7 @@
 """Flask port of the deployed Calmer Commute v81 crowd logic."""
 import json
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from urllib.parse import urlencode
@@ -19,10 +21,39 @@ ROUTE_SENSORS = {
     "tram": ({"id": 5, "name": "Princes Bridge"},),
 }
 
+# The live path below fans out ~20 batched requests plus 3 forecast calls to
+# Melbourne's open-data API on every hit (~5-6s), so unlike a per-request
+# stale-data bug, hammering it repeatedly buys no fresher an answer: pedestrian
+# counts don't meaningfully change inside a minute. Cache one process-wide
+# copy for LIVE_CACHE_TTL_SECONDS so concurrent/rapid requests share a single
+# fetch instead of each paying the full fan-out cost. Per-process only -- a
+# multi-worker deployment gets one cache per worker, which is fine here since
+# this just bounds redundant upstream calls, not correctness.
+LIVE_CACHE_TTL_SECONDS = 45
+_live_cache_lock = threading.Lock()
+_live_cache: dict | None = None
+_live_cache_expires_at = 0.0
+
 
 def get_crowd_payload(scenario: str | None = None) -> dict:
     if scenario == "2026-08-04T07:00":
         return _historical_payload()
+    return _cached_live_payload()
+
+
+def _cached_live_payload() -> dict:
+    global _live_cache, _live_cache_expires_at
+    with _live_cache_lock:
+        now = time.monotonic()
+        if _live_cache is not None and now < _live_cache_expires_at:
+            return _live_cache
+        payload = _fetch_live_payload()
+        _live_cache = payload
+        _live_cache_expires_at = time.monotonic() + LIVE_CACHE_TTL_SECONDS
+        return payload
+
+
+def _fetch_live_payload() -> dict:
     definitions = (*ROUTE_SENSORS["train"], *ROUTE_SENSORS["tram"])
     with ThreadPoolExecutor(max_workers=8) as pool:
         readings = list(pool.map(_read_sensor, definitions))

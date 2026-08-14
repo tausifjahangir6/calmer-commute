@@ -20,8 +20,16 @@ source .venv/bin/activate
 ## Install dependencies
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt -r ../ai/requirements.txt
 ```
+
+The `ai/requirements.txt` install (joblib, scikit-learn) is required for
+`/api/crowd` and `/api/predictions` to load the forecast model. Without it,
+`app/ai/forecast.py`'s model import fails silently underneath a broad
+`except Exception` in `routes.py`, and `/api/crowd` returns a misleading
+"The City feed could not be reached" instead of the real cause. The
+Dockerfile already installs this; local `pip install -r requirements.txt`
+alone does not.
 
 ## Run locally
 

@@ -49,6 +49,7 @@ def crowd():
     try:
         return jsonify(get_crowd_payload(request.args.get("scenario")))
     except Exception:
+        current_app.logger.exception("GET /api/crowd failed")
         return jsonify({"ok": False, "dataStatus": "unavailable", "latestObservation": None,
                         "limitation": "The City feed could not be reached. High/Low classifications are withheld.",
                         "routes": {}, "mapSensors": []}), 503
