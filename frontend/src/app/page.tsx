@@ -24,6 +24,13 @@ const WORK = "Growth Factory, 3/292 Flinders St, Melbourne VIC 3000";
 // map effect, which called setDynamicRoutes and looped "Comparing public-transport…".
 const DEFAULT_TRAVEL_TIMING: TravelTiming = { mode: "now", dateTime: "" };
 
+// Sensor names come from the raw City of Melbourne dataset, which sometimes
+// carries a construction-project suffix (e.g. "- New footpath") that isn't
+// meaningful to commuters — strip it wherever a sensor name is displayed.
+function formatSensorName(name: string) {
+  return name.replace(/\s*-\s*New footpath\s*$/i, "");
+}
+
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("plan");
   const [selectedRoute, setSelectedRoute] = useState<RouteId>("route-0");
@@ -230,9 +237,10 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
   const verifiedAvoidance = Boolean(avoidedRoute && recommended && displayedHotspotRoute?.hotspotId === avoidedRoute.hotspotId);
   const noLowRoute = assessed.length > 0 && assessed.every((route) => route.crowdRisk === "High");
   const selectedForecast = selectedDynamic?.forecast ?? null;
-  const forecastSensorName = selectedDynamic?.nearbySensors.find(
+  const forecastSensorNameRaw = selectedDynamic?.nearbySensors.find(
     (sensor) => sensor.id === Number(selectedForecast?.sensor_id),
   )?.name ?? (selectedForecast ? `Sensor ${selectedForecast.sensor_id}` : "Selected route");
+  const forecastSensorName = formatSensorName(forecastSensorNameRaw);
   const assessedRouteIds = assessed.map((route) => route.id).join(",");
   useEffect(() => {
     if (!assessedRouteIds) return;
@@ -260,7 +268,7 @@ function RoutesScreen({ selected, crowdLimit, onCrowdLimit, dataState, crowdData
         {displayedHotspotRoute && hotspotSensor && hotspotMeta && (
           <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
             <article className="hotspot-avoidance" aria-live="polite" style={{ flex: "1 1 260px" }}>
-              <div className="hotspot-heading"><span aria-hidden="true">!</span><div><small>BUSY AREA AHEAD</small><strong>{hotspotMeta.name.replace(/\s*-\s*New footpath\s*$/i, "")}</strong></div></div>
+              <div className="hotspot-heading"><span aria-hidden="true">!</span><div><small>BUSY AREA AHEAD</small><strong>{formatSensorName(hotspotMeta.name)}</strong></div></div>
               <p><b>High crowd · {formatObservation(hotspotSensor.latestObservation)}</b></p>
               {verifiedAvoidance && recommended ? <>
                 <div className="avoidance-result"><span aria-hidden="true">✓</span><p><strong>{recommended.service} recommended</strong><small>Avoids this supported High-crowd corridor.</small></p></div>
