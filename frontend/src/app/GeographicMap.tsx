@@ -8,6 +8,8 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import type { MapSensorReading } from "./journeyTypes";
+import { matchRouteSensors, riskFrom } from "./routeAssessment";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -30,7 +32,6 @@ export type DynamicRoute = {
   routePath: { lat: number; lng: number }[];
   nearbySensors: { id: number; name: string; distanceMetres: number }[];
 };
-type MapSensorReading = { id: number; peoplePerMinute: number | null; latestObservation: string | null; sampleMinutes: number; freshness: "fresh" | "delayed" | "stale" | "unavailable"; evidence: "observed" | "inferred-zero" | "unavailable"; operationalStatus: "active" | "inactive" | "unknown" };
 type Props = { trainCount: number | null; tramCount: number | null; trainRisk: Risk; tramRisk: Risk; selected: RouteId; refuge: boolean; quietSpot?: boolean; quietOrigin?: string; quietDestination?: string; crowdLimit?: number; sensorReadings?: MapSensorReading[]; onSelect: (route: RouteId) => void; onRoutesResolved?: (routes: DynamicRoute[]) => void; origin?: string; destination?: string; journeyDirection?: "to-work" | "home"; travelTiming?: TravelTiming; };
 type RouteState = "loading" | "ready" | "not-found" | "unconfigured" | "error";
 
@@ -423,14 +424,10 @@ export default function GeographicMap(props: Props) {
           polylines.push(new window.google.maps.Polyline({ map, path: segment.path, strokeColor: walking ? "#3f7567" : transitColor, strokeOpacity: walking ? 0 : .96, strokeWeight: walking ? 4 : 6, icons: walking ? [{ icon: { path: window.google.maps.SymbolPath.CIRCLE, fillColor: "#3f7567", fillOpacity: 1, strokeOpacity: 0, scale: 2.25 }, offset: "0", repeat: "12px" }] : undefined }));
         }
         if (!isQuietSpot) {
-          const usableReadings = sensorReadings.filter((reading) =>
-            (reading.freshness === "fresh" || reading.freshness === "delayed") && reading.peoplePerMinute !== null,
-          );
           const routeAssessment = routes.map((route) => {
-            const direct = usableReadings.filter((reading) => route.directSensorIds.includes(reading.id));
-            const matched = direct.length ? direct : usableReadings.filter((reading) => route.proxySensors.some((proxy) => proxy.id === reading.id));
+            const { matched, count } = matchRouteSensors(route, sensorReadings);
             const hotspot = matched.sort((a, b) => (b.peoplePerMinute ?? -1) - (a.peoplePerMinute ?? -1))[0];
-            return { route, hotspot, risk: hotspot && (hotspot.peoplePerMinute ?? 0) > crowdLimit ? "High" : hotspot ? "Low" : "Unknown" };
+            return { route, hotspot, risk: riskFrom(count, crowdLimit) };
           });
           const selectedAssessment = routeAssessment.find((item) => item.route.id === selected);
           const selectedHigh = selectedAssessment?.risk === "High" ? selectedAssessment : null;
