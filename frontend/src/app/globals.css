@@ -808,7 +808,7 @@ body {
 .plan-kicker {
   margin: 0 0 30px;
   color: var(--sage);
-  font-size: 25px;
+  font-size: 22px;
   line-height: 1.2;
   font-weight: 800;
   letter-spacing: .015em;
@@ -849,7 +849,7 @@ body {
 .planner-heading p {
   margin: 0 0 26px;
   color: var(--sage);
-  font-size: 27px;
+  font-size: 24px;
   line-height: 1;
   font-weight: 800;
   letter-spacing: .17em;
@@ -857,7 +857,7 @@ body {
 .planner-heading h2 {
   margin: 0 0 42px;
   color: #153f37;
-  font-size: 54px;
+  font-size: 50px;
   line-height: 1.08;
   letter-spacing: -.045em;
 }
@@ -1435,11 +1435,11 @@ body {
     gap: 58px;
   }
   .plan-introduction h1 { font-size: clamp(68px, 7.2vw, 92px); }
-  .plan-kicker { font-size: 18px; }
+  .plan-kicker { font-size: 17px; }
   .plan-description { font-size: 19px; }
   .prototype-stage .planner-panel { padding: 45px; }
-  .planner-heading p { font-size: 20px; }
-  .planner-heading h2 { font-size: 43px; }
+  .planner-heading p { font-size: 18px; }
+  .planner-heading h2 { font-size: 40px; }
   .prototype-stage .site-footer {
     width: min(1040px, calc(100% - 84px));
     grid-template-columns: minmax(0, 1fr) minmax(500px, 1fr);
@@ -1503,12 +1503,12 @@ body {
     padding: 58px 0 60px;
   }
   .plan-introduction { transform: none; }
-  .plan-kicker { margin-bottom: 18px; font-size: 15px; }
+  .plan-kicker { margin-bottom: 18px; font-size: 14px; }
   .plan-introduction h1 { font-size: clamp(58px, 15vw, 88px); }
   .plan-description { margin-top: 28px; font-size: 17px; line-height: 1.6; }
   .prototype-stage .planner-panel { margin-top: 48px; padding: 36px 30px; transform: none; }
-  .planner-heading p { margin-bottom: 18px; font-size: 16px; }
-  .planner-heading h2 { margin-bottom: 30px; font-size: 39px; }
+  .planner-heading p { margin-bottom: 18px; font-size: 15px; }
+  .planner-heading h2 { margin-bottom: 30px; font-size: 36px; }
   .prototype-stage .site-footer {
     position: static;
     left: auto;
