@@ -524,8 +524,8 @@ export default function GeographicMap(props: Props) {
         });
         markers.push(
           ...sensorMarkers.flat(),
-          new Marker({ map, position: allPoints[0], label: "A", title: origin, zIndex: 10 }),
-          new Marker({ map, position: allPoints[allPoints.length - 1], label: "B", title: destination, zIndex: 10 }),
+          new Marker({ map, position: allPoints[0], label: "S", title: origin, zIndex: 10 }),
+          new Marker({ map, position: allPoints[allPoints.length - 1], label: "F", title: destination, zIndex: 10 }),
         );
         setState("ready"); setMessage(isQuietSpot ? `Google walking route · ${meta.duration}` : `${meta.service} · ${meta.duration} · ${routes.length} Google alternative${routes.length === 1 ? "" : "s"}`);
       } catch (error) {
